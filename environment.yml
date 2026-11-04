@@ -1,0 +1,19 @@
+# Environment used for every number in the paper.
+#   conda env create -f environment.yml && conda activate cheddar
+#
+# cheddar/ needs only torch and numpy. rdkit and joblib are required only by
+# tools/build_features.py, which rebuilds the feature caches from trajectories.
+# CUDA is optional: the code runs on CPU, slowly.
+name: cheddar
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9.25
+  - pip
+  - pip:
+      # exact versions the released runs used
+      - torch==2.8.0+cu126
+      - --extra-index-url https://download.pytorch.org/whl/cu126
+      - numpy==1.26.4
+      - rdkit==2023.9.6      # tools/build_features.py only
+      - joblib==1.5.1        # tools/build_features.py only
