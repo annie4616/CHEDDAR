@@ -8,24 +8,26 @@ edges are selected by how often a pair stays in contact, and the two solvent pre
 averaged. The model has 554,561 parameters, trains in about 31 min on one GPU and predicts
 in 2.3 ms per peptide.
 
-## If you only want a prediction
+## Obtaining a prediction
 
-Four steps, in this order. Step 3 downloads 1.6 GB, unpacks it to 10.2 GB and needs about
-12.5 GB of free disk while it does so. It is the only slow step, it runs once, and
-everything afterwards takes seconds.
+Four steps, in the order given. Step 3 downloads 1.6 GB, unpacks it to 10.2 GB and requires
+approximately 12.5 GB of free disk while doing so. It is the only lengthy step, it is
+performed once, and every subsequent command completes in seconds.
 
 ```bash
 conda env create -f environment.yml && conda activate cheddar   # 1. install, about 3 min
-python -m cheddar check                                         # 2. what is already here
-python -m cheddar data                                          # 3. get the MD data, 1.6 GB
+python -m cheddar check                                         # 2. report what is present
+python -m cheddar data                                          # 3. obtain the MD data, 1.6 GB
 ./predict.sh 5222                                               # 4. predict
 ```
 
-Step 2 prints what is present and what is missing, and step 3 is a no-op if you already have
-the trajectories, so running both costs nothing when they are not needed.
+Step 2 reports which files are present and which are missing, and step 3 exits immediately
+if the trajectories are already available, so both may be run without cost when they are not
+required.
 
-`5222` is a CycPeptMPDB id; name as many as you like, or run `./predict.sh` with no
-arguments for a worked example. The answer looks like this:
+`5222` is a CycPeptMPDB identifier; any number of identifiers may be given, and
+`./predict.sh` with no arguments runs a worked example. The output has the following
+form:
 
 ```
 id          logPapp     sd   measured partition
@@ -36,42 +38,31 @@ id          logPapp     sd   measured partition
    measured -5.25, so this prediction is 0.18 log units off.
 ```
 
-### Reading that output
+### Interpreting the output
 
 `log P_app` is the base-10 logarithm of the apparent permeability coefficient in cm/s, as
-measured by a PAMPA assay. It is always negative, and **less negative means more
-permeable**: −5.0 is a peptide that crosses well, −7.0 one that barely crosses. Because a
-bare log unit is hard to place, each prediction is also ranked against the 4,925 peptides
-that have a measured value, which is the only scale this model was ever fitted on.
+measured by a PAMPA assay. It is negative throughout, and **less negative indicates greater
+permeability**: −5.0 denotes a peptide that crosses readily, −7.0 one that crosses poorly.
+Since an absolute log unit is difficult to place in context, each prediction is additionally
+ranked against the 4,925 peptides carrying a measured value, this being the only scale on
+which the model was fitted.
 
-`sd` is the spread across the five independently trained models that ship here. A small
-`sd` means the five agree; a large one means the peptide sits somewhere they disagree
-about, and the prediction deserves less weight.
+`sd` is the standard deviation across the five independently trained models provided here. A
+small `sd` indicates agreement among the five; a large one indicates that the peptide falls
+where they disagree, and the prediction should be weighted accordingly.
 
-`partition` says whether that peptide was in the training set of the model you used. If it
-says `train`, the number is in-sample and flattering. Use `--split OD_Murcko` for a model
-that has never seen the scaffold:
+`partition` indicates whether the peptide belonged to the training set of the model used. A
+value of `train` means the figure is in-sample and correspondingly optimistic. The option
+`--split OD_Murcko` selects a model that has not encountered the scaffold:
 
 ```bash
 ./predict.sh 4705 --split OD_Murcko
 ```
 
-### One thing worth knowing before you start
-
-CHEDDAR does not read a SMILES string and return a number. It reads **molecular dynamics
-trajectories** — the peptide simulated in water and in hexane, 100 frames each — because
-the whole point of the method is that permeability depends on how a peptide changes shape
-between the two environments. Every peptide in CycPeptMPDB-4D already has these, so any of
-those 4,925 can be predicted immediately. A *new* peptide needs its two MD simulations run
-first, placed in the trajectory folder under the same naming as the public release.
-
-The first command you run builds a summary of those trajectories and takes a couple of
-minutes. Everything after that takes seconds.
-
 ## The six commands
 
-Listed in the order you would run them. The first two are setup and only matter once; most
-readers never need the last two.
+Listed in the order in which they would be run. The first two concern setup and are
+relevant only once; the last two are required only for retraining.
 
 ```bash
 python -m cheddar check                      # versions, device, which data files are present
@@ -82,12 +73,12 @@ python -m cheddar train --split ID --seed 1  # retrain one model, about 31 min o
 python -m cheddar sweep                      # retrain 3 splits x 5 seeds, one worker per free GPU
 ```
 
-`./predict.sh` is a thin wrapper over `python -m cheddar predict`, so anything you can pass
-to one you can pass to the other: `--partition test` for a whole partition, `--all` for
-every peptide, `--out results.csv` to write a spreadsheet.
+`./predict.sh` is a thin wrapper over `python -m cheddar predict`, and accepts the same
+arguments: `--partition test` for an entire partition, `--all` for every peptide, and
+`--out results.csv` to write the results to a file.
 
-If something looks wrong, `python -m cheddar check` reports what is installed, which GPU it
-can see, and which data files it found, without running anything.
+Should anything appear incorrect, `python -m cheddar check` reports the installed versions,
+the visible GPU and the data files located, without executing any computation.
 
 ## Reproducing the paper
 
@@ -95,8 +86,9 @@ can see, and which data files it found, without running anything.
 python -m cheddar          # scores the 15 shipped checkpoints, prints the paper's main row
 ```
 
-No arguments, no paths. Scoring all fifteen checkpoints takes about three minutes, most of
-it spent reading the two caches. It runs without a GPU, but several times slower. It prints
+No arguments or paths are required. Scoring all fifteen checkpoints takes approximately
+three minutes, the greater part of which is spent reading the two caches. It runs without a
+GPU, though several times more slowly. The output is
 
 ```
 split           n  MSE              R2
@@ -105,39 +97,40 @@ OD_Murcko       5  0.236 +- 0.018    0.660 +- 0.026
 Cliff_ratio     5  0.142 +- 0.003    0.683 +- 0.006
 ```
 
-which is the CHEDDAR row of Table 1, mean and standard deviation over seeds 1, 2, 7, 13, 42,
-followed by the same result in words. The three splits are the random (`ID`), Bemis–Murcko
-scaffold (`OD_Murcko`) and activity-cliff (`Cliff_ratio`) partitions of Appendix C.
+corresponding to the CHEDDAR row of Table 1, as the mean and standard deviation over seeds
+1, 2, 7, 13 and 42, followed by the same result stated in prose. The three splits are the
+random (`ID`), Bemis–Murcko scaffold (`OD_Murcko`) and activity-cliff (`Cliff_ratio`)
+partitions described in Appendix C.
 
-Retraining from scratch gives the same table. `python -m cheddar sweep` rebuilds all fifteen
+Retraining from scratch yields the same table. `python -m cheddar sweep` rebuilds all fifteen
 models from random initialisation and reproduces every row above in both mean and standard
-deviation, each fresh `best.pt` coming out byte-identical to the checkpoint shipped here.
-Two limits of that check are worth stating: it is a deterministic replay on the same GPU
-architecture and PyTorch build rather than an independent reimplementation, and it covers
-the CHEDDAR row only — the seven baselines of Table 1 are not in this repository.
+deviation, each resulting `best.pt` being byte-identical to the checkpoint provided here.
+Two limitations of this check should be noted: it constitutes a deterministic replay on the
+same GPU architecture and PyTorch build rather than an independent reimplementation, and it
+covers the CHEDDAR row alone, as the seven baselines of Table 1 are not included in this
+repository.
 
 ## Training the model
 
-You do not need to train anything to use CHEDDAR — the fifteen models behind the paper ship
-in `ckpts/`, and `predict.sh` already uses them. This section is for rebuilding those fifteen
-yourself. It assumes no background in deep learning.
+Training is not required in order to use CHEDDAR: the fifteen models behind the paper are
+provided in `ckpts/`, and `predict.sh` uses them directly. This section documents how those
+fifteen are rebuilt, for readers who wish to verify them.
 
-**What training actually does.** The model starts from random numbers and repeatedly guesses
-the permeability of peptides whose measured value we know. Each guess is compared with the
-measurement, and the numbers inside the model are nudged so the next guess is a little
-closer. One pass over the training peptides is an *epoch*; CHEDDAR does 120 of them. Nothing
-is being searched or docked — the model is being fitted, the way you would fit a curve, just
-with a great many more coefficients.
+**Objective.** The model is fitted by stochastic gradient descent on the measured
+permeabilities of the training peptides, minimising mean squared error on the scaled label.
+A single pass over the training set is one epoch, and the budget is fixed at 120 epochs. No
+conformational search or docking is performed at training time; the conformational ensembles
+are inputs, computed in advance.
 
-**How the data is divided.** The peptides are split three ways. The model is fitted on the
-*training* part, watched on the *validation* part so we can tell when it has learned as much
-as it usefully can, and judged once on the *test* part, which it never sees during fitting.
-We keep the version of the model that did best on validation, then report its score on test.
-That last number is the honest one, and it is what Table 1 reports.
+**Partitioning and model selection.** Each split divides the peptides into training,
+validation and test sets. Parameters are fitted on the training set, the checkpoint is
+selected by validation mean squared error on the original log P_app scale, and the selected
+checkpoint is evaluated once on the test set, which is not consulted during fitting or
+selection. The test figures are what Table 1 reports.
 
-**Why five seeds.** Training starts from random values, so two runs of the same recipe give
-slightly different models. Running five and reporting the mean with its spread shows how
-much of a result is the method and how much is luck.
+**Replication.** Initialisation and batch order depend on the random seed, so each
+configuration is run with five seeds (1, 2, 7, 13, 42) and reported as a mean with its
+standard deviation, which separates the effect of the method from seed variance.
 
 One model, about 31 minutes on one GPU:
 
@@ -151,23 +144,23 @@ All fifteen, which is how the paper's table was produced:
 python -m cheddar sweep
 ```
 
-`sweep` takes only GPUs that nobody else is using, caps itself at 80 % of the cores it is
-given, and skips runs that already have results, so an interrupted sweep continues where it
-stopped. Runs land in `runs/cheddar-<split>-s<seed>/` as `test_metrics.json`, `history.json`,
-`predictions.csv` and `best.pt`. Deterministic kernels are on, so the same seed on the same
-GPU architecture and PyTorch build reproduces its result exactly, down to a byte-identical
-`best.pt`.
+`sweep` uses only GPUs that are not in use by others, limits itself to 80 % of the available
+cores, and skips runs for which results already exist, so an interrupted sweep resumes where
+it stopped. Results are written to `runs/cheddar-<split>-s<seed>/` as `test_metrics.json`,
+`history.json`, `predictions.csv` and `best.pt`. Deterministic kernels are enabled, so a
+given seed on the same GPU architecture and PyTorch build reproduces its result exactly,
+including a byte-identical `best.pt`.
 
-`sweep` gives each run a card to itself, so on eight RTX 3090s the fifteen runs go in two
-waves and take 69 min. Putting all fifteen on the eight cards at once instead, two per
-card, took 51 min: 20–26 s an epoch, plus about 8 min at the start while fifteen processes
-read the same two 1 GB caches off one disk. A run peaks at 0.72 GB of GPU memory, so
-sharing a card costs speed and nothing else.
+`sweep` assigns one card per run, so on eight RTX 3090s the fifteen runs proceed in two
+waves and complete in 69 min. Placing all fifteen on the eight cards concurrently, two per
+card, required 51 min: 20–26 s per epoch, together with approximately 8 min at the outset
+while fifteen processes read the same two 1 GB caches from a single disk. A run peaks at
+0.72 GB of GPU memory, so sharing a card affects speed alone.
 
 ## Tuning and ablations
 
-`configs/cheddar.json` holds every hyperparameter of the released model. Copy it, change what
-you want and pass it with `--config`.
+`configs/cheddar.json` contains every hyperparameter of the released model. It may be
+copied, modified as required and supplied via `--config`.
 
 ```bash
 python -m cheddar sweep --config configs/abl_water_only.json
@@ -187,13 +180,14 @@ python -m cheddar train --config configs/abl_no_contact_edges.json --split ID --
 | `meanonly` | drop the dispersion columns, leaving ensemble means | absent |
 | `cache`, `alt_cache` | the two solvent caches; a name containing `meanedge` is built with the mean-distance rule of Eq. (6) instead of occupancy | ensemble_{Water,Hexane} |
 
-The four shipped `abl_*.json` are the four arms of Table 2, so each row of that table is one
-sweep. Runs are named after the config, for example `runs/abl_water_only-ID-s1/`.
+The four `abl_*.json` files provided correspond to the four arms of Table 2, so each row of
+that table amounts to a single sweep. Runs are named after the configuration, for example
+`runs/abl_water_only-ID-s1/`.
 
-## What is here
+## Repository contents
 
 ```
-predict.sh   one-click prediction, the only entry point most readers need
+predict.sh   single-command prediction, the entry point most readers require
 cheddar/     __init__.py  marks the package, empty
              __main__.py  the six commands above
              fetch.py     find the trajectories, or download the Zenodo record
@@ -215,34 +209,37 @@ LICENSE      MIT
 
 ## Data
 
-The label table, the atom annotation and the three split files ship here. The MD
-trajectories do not; they are the public CycPeptMPDB-4D release, 1.6 GB compressed and
-10.2 GB unpacked, at https://zenodo.org/records/21274695 .
+The label table, the atom annotation and the three split files are included here. The MD
+trajectories are not; they constitute the public CycPeptMPDB-4D release, 1.6 GB compressed
+and 10.2 GB unpacked, available at https://zenodo.org/records/21274695 .
 
-Nothing needs to be set. `python -m cheddar data` looks for an unpacked copy in the usual
-places, downloads and unpacks the record if there is none, resumes an interrupted download
-and checks the published MD5. If your copy is somewhere unusual, point `CHEDDAR_TRAJ` at the
-folder that holds `Water/` and `Hexane/`, and set `CHEDDAR_NO_DOWNLOAD=1` if the machine
-should never reach the network. Budget about 12.5 GB of disk while unpacking and 10.2 GB
-after, once the zip is removed.
+No configuration is necessary. `python -m cheddar data` searches the customary locations for
+an unpacked copy, downloads and unpacks the record if none is found, resumes an interrupted
+download and verifies the published MD5. If the copy resides in a non-standard location,
+`CHEDDAR_TRAJ` may be set to the directory containing `Water/` and `Hexane/`, and
+`CHEDDAR_NO_DOWNLOAD=1` prevents any network access. Approximately 12.5 GB of disk is
+required during unpacking and 10.2 GB thereafter, once the archive is removed.
 
-The release is read exactly as it unpacks, `Water/Trajectories/*_Traj.pdb` and the same for
-hexane, so nothing has to be converted. Both solvent caches are built on first use and
-occupy 1.9 GB together, about 90 s each on 32 cores: some 20 s computing the features for
-the 4,925 peptides and the rest writing a gigabyte to disk. They are derived files: delete
-them whenever you like and the next command rebuilds them, and a rebuild reproduces every
-feature array bit for bit, so the table above does not depend on keeping any particular
-copy of them. Only the `.pkl` framing can shift by a few hundred bytes, which nothing reads.
+The release is read exactly as it unpacks, from `Water/Trajectories/*_Traj.pdb` and the
+corresponding hexane path, so no conversion is necessary. Both solvent caches are built on
+first use and together occupy 1.9 GB, requiring approximately 90 s each on 32 cores: some
+20 s to compute the features for the 4,925 peptides and the remainder to write a gigabyte
+to disk. They are derived files and may be deleted at any point, the next command rebuilding
+them; a rebuild reproduces every feature array bit for bit, so the results above do not
+depend on retaining any particular copy. Only the `.pkl` framing may shift by a few hundred
+bytes, which nothing reads.
 
-Two things worth knowing. The release holds 5,160 peptides while the model uses the 4,925
-that have an atom annotation here; the extra 235 are skipped, which is expected and not an
-error. And an earlier release of the same data stores coordinates in nanometres, where the
-5 A contact cutoff would make every atom pair a contact; the builder checks the units and
-refuses rather than producing quiet nonsense.
+Two points merit attention. The release contains 5,160 peptides whereas the model uses the
+4,925 for which an atom annotation is provided here; the remaining 235 are skipped, which is
+expected and does not indicate an error. In addition, an earlier release of the same data
+stores coordinates in nanometres, under which the 5 A contact cutoff would render every atom
+pair a contact; the builder verifies the units and declines to proceed rather than producing
+silently incorrect features.
 
-`data/nal_fix.json` corrects 95 peptides whose table SMILES is 2-naphthylalanine while the
-deposited geometry is 1-naphthylalanine. It is applied automatically; without it those 95
-molecules get atom features that disagree with their own trajectory.
+`data/nal_fix.json` corrects 95 peptides whose tabulated SMILES specifies
+2-naphthylalanine while the deposited geometry is 1-naphthylalanine. It is applied
+automatically; without it, those 95 molecules receive atom features inconsistent with their
+own trajectory.
 
 ## License
 
