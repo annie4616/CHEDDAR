@@ -43,18 +43,14 @@ indexing is shared between the molecular graph and both solvent ensembles.
 """
 from __future__ import annotations
 
-import argparse
 import csv
+import glob
 import json
 import os
 import pickle
 
 import numpy as np
 from joblib import Parallel, delayed
-
-TRAJ = None   # --traj : directory of {pid}_{solvent}_traj.npz files
-CSV = None    # --csv  : CycPeptMPDB-4D label/SMILES table
-SMILES_FIX = None  # --smiles-fix : optional {"fixed_smiles": {id: SMILES}} json
 
 ELEMENTS = ["C", "N", "O", "S", "F", "Cl", "Br", "I", "P"]
 HYB = ["SP", "SP2", "SP3", "SP3D", "SP3D2"]
@@ -123,7 +119,6 @@ def read_labels(csv_path: str | Path, col: str = "PAMPA") -> dict[str, float]:
 
 
 def _node_chem(mol, order):
-    from rdkit import Chem
     ri = mol.GetRingInfo()
     macro = set()
     for ring in ri.AtomRings():
@@ -132,8 +127,6 @@ def _node_chem(mol, order):
     cip = {}
     for a in mol.GetAtoms():
         cip[a.GetIdx()] = a.GetPropsAsDict().get("_CIPCode", "none")
-    # RDKit's own donor/acceptor definition, so this is not a hand-rolled rule
-    from rdkit.Chem import Lipinski
     hbd = set()
     hba = set()
     for a in mol.GetAtoms():
@@ -187,6 +180,41 @@ def _check_units(C, path):
     _UNITS_OK.append(nn)
 
 
+PDB_TAG = {"Water": "H2O", "Hexane": "Hexane"}
+
+
+def find_traj(traj_dir, pid, solvent):
+    """Locate one peptide's trajectory in either accepted layout.
+
+    The public CycPeptMPDB-4D release (https://zenodo.org/records/21274695) unpacks to
+    <Solvent>/Trajectories/<Source>_<pid>_<H2O|Hexane>_Traj.pdb, 100 MODELs each. The
+    internal layout is <pid>_<solvent>_traj.npz. Both are read; nothing else is.
+    """
+    npz = os.path.join(traj_dir, "%s_%s_traj.npz" % (pid, solvent))
+    if os.path.exists(npz):
+        return npz
+    hit = glob.glob(os.path.join(traj_dir, solvent, "Trajectories",
+                                 "*_%s_%s_Traj.pdb" % (pid, PDB_TAG[solvent])))
+    return hit[0] if hit else None
+
+
+def read_frames(path):
+    """Frames of one trajectory as (n_frames, n_atoms, 3) in Angstrom."""
+    if path.endswith(".npz"):
+        return np.load(path, allow_pickle=True)["coords"]
+    frames, cur = [], []
+    with open(path) as fh:
+        for ln in fh:
+            if ln.startswith(("ATOM", "HETATM")):
+                cur.append((float(ln[30:38]), float(ln[38:46]), float(ln[46:54])))
+            elif ln.startswith("ENDMDL") and cur:
+                frames.append(cur)
+                cur = []
+    if cur:
+        frames.append(cur)
+    return np.asarray(frames, np.float32)
+
+
 def _one(pid, ann, nconf, traj_dir, smiles, solvent="Water", select="occupancy", contact_p=0.05):
     from rdkit import Chem, RDLogger
     RDLogger.DisableLog("rdApp.*")
@@ -204,10 +232,10 @@ def _one(pid, ann, nconf, traj_dir, smiles, solvent="Water", select="occupancy",
         return None
     order = list(range(n))        # per_atom is already RDKit/SMILES order
 
-    f = os.path.join(traj_dir, "%s_%s_traj.npz" % (pid, solvent))
-    if not os.path.exists(f):
+    f = find_traj(traj_dir, pid, solvent)
+    if f is None:
         return None
-    C = np.load(f, allow_pickle=True)["coords"]
+    C = read_frames(f)
     _check_units(C, f)
     if loc.max() >= C.shape[1]:
         return None
@@ -363,14 +391,15 @@ def build_features(annot, traj, csv_path, solvent="Water", select="occupancy",
     pids = sorted(p for p in ann if str(p) in smi)
     if limit:
         pids = pids[:limit]
-    missing = [p for p in pids
-               if not os.path.exists(os.path.join(traj, "%s_%s_traj.npz" % (p, solvent)))]
+    missing = [p for p in pids if find_traj(traj, p, solvent) is None]
     if len(missing) == len(pids):
         raise FileNotFoundError(
-            "no trajectories found in %s for solvent %s.\n"
+            "no %s trajectories found in %s, in either accepted layout\n"
+            "  <Solvent>/Trajectories/<Source>_<id>_<H2O|Hexane>_Traj.pdb   (the public release)\n"
+            "  <id>_<solvent>_traj.npz\n"
             "The ensemble features of Sec. 3.2 are statistics over the MD frames; "
             "the label CSV supplies SMILES and PAMPA only and cannot substitute for them."
-            % (traj, solvent))
+            % (solvent, traj))
     res = Parallel(n_jobs=jobs, verbose=1)(
         delayed(_one)(p, ann[p], conformers, traj, smi[str(p)], solvent, select, contact_p)
         for p in pids)
@@ -406,13 +435,24 @@ def merge_edge_sets(occ, mean):
 
 
 def build_cache(out_path, annot, traj, csv_path, solvent="Water",
-                conformers=100, contact_p=0.05, jobs=32, smiles_fix=None):
-    """Build one solvent cache end to end and write it to out_path."""
-    occ = build_features(annot, traj, csv_path, solvent, "occupancy",
-                         conformers, contact_p, jobs, smiles_fix)
-    mean = build_features(annot, traj, csv_path, solvent, "meandist",
-                          conformers, contact_p, jobs, smiles_fix)
-    blob = merge_edge_sets(occ, mean)
+                conformers=100, contact_p=0.05, jobs=32, smiles_fix=None,
+                select="occupancy"):
+    """Build one solvent cache end to end and write it to out_path.
+
+    select="occupancy" is the released model: contact edges chosen by Eq. (4),
+    carrying m_ij of Eq. (7) so the edge dropout has something to act on.
+    select="meandist" builds the mean-distance set of Eq. (6) on its own, which
+    is the edge rule of the "w/o ensemble geometry" arm of Table 2.
+    """
+    if select == "meandist":
+        blob = build_features(annot, traj, csv_path, solvent, "meandist",
+                              conformers, contact_p, jobs, smiles_fix)
+    else:
+        occ = build_features(annot, traj, csv_path, solvent, "occupancy",
+                             conformers, contact_p, jobs, smiles_fix)
+        mean = build_features(annot, traj, csv_path, solvent, "meandist",
+                              conformers, contact_p, jobs, smiles_fix)
+        blob = merge_edge_sets(occ, mean)
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
     with open(out_path, "wb") as f:
         pickle.dump(blob, f)

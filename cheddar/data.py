@@ -23,12 +23,22 @@ from torch.utils.data import Dataset
 from .features import read_labels
 
 
+def _jobs():
+    """Worker count for the build: at most 80 % of the cores we may use."""
+    try:
+        n = len(os.sched_getaffinity(0))
+    except AttributeError:
+        n = os.cpu_count() or 8
+    return max(1, min(32, int(0.8 * n)))
+
+
 def ensure_cache(cache_path):
     """Build a missing solvent cache in place (Sec. 3.2).
 
     The ensemble features are statistics over MD frames, so this needs the
-    trajectories. Point CHEDDAR_TRAJ, CHEDDAR_ANNOT and CHEDDAR_CSV at them; the
-    label CSV alone carries SMILES and PAMPA and cannot substitute.
+    trajectories. They are looked for wherever they plausibly are and downloaded
+    from Zenodo if they are nowhere; CHEDDAR_TRAJ overrides that search and
+    CHEDDAR_NO_DOWNLOAD=1 forbids the download.
 
     data/nal_fix.json beside the label CSV is picked up automatically. It holds
     the 95 naphthylalanine SMILES that the released table writes as 2-Nal while
@@ -37,17 +47,15 @@ def ensure_cache(cache_path):
     overrides the location.
     """
     from .features import build_cache
-    traj = os.environ.get("CHEDDAR_TRAJ")
-    annot = os.environ.get("CHEDDAR_ANNOT")
-    csv_path = os.environ.get("CHEDDAR_CSV")
-    missing = [k for k, v in (("CHEDDAR_TRAJ", traj), ("CHEDDAR_ANNOT", annot),
-                              ("CHEDDAR_CSV", csv_path)) if not v]
-    if missing:
-        raise FileNotFoundError(
-            "%s is missing and cannot be built: set %s.\n"
-            "The cache holds per-atom statistics over 100 MD frames (Sec. 3.2); "
-            "it is built from the trajectories, not from the label table."
-            % (cache_path, ", ".join(missing)))
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+    from . import fetch
+    traj = os.environ.get("CHEDDAR_TRAJ") or fetch.ensure()
+    annot = os.environ.get("CHEDDAR_ANNOT") or os.path.join(data_dir, "atom_annot.pkl")
+    csv_path = os.environ.get("CHEDDAR_CSV") or os.path.join(data_dir, "CycPeptMPDB-4D_new_imhb.csv")
+    for lbl, path in (("atom annotation", annot), ("label table", csv_path)):
+        if not os.path.exists(path):
+            raise FileNotFoundError("%s not found at %s; set CHEDDAR_ANNOT / CHEDDAR_CSV"
+                                    % (lbl, path))
     fix = os.environ.get("CHEDDAR_SMILES_FIX") or os.path.join(
         os.path.dirname(os.path.abspath(csv_path)), "nal_fix.json")
     if not os.path.exists(fix):
@@ -56,8 +64,17 @@ def ensure_cache(cache_path):
             "for the 95 naphthylalanine peptides; set CHEDDAR_SMILES_FIX to point "
             "at it, or pass smiles_fix=None to build_cache to skip it knowingly."
             % fix)
-    solvent = "Hexane" if "Hexane" in os.path.basename(cache_path) else "Water"
-    build_cache(cache_path, annot, traj, csv_path, solvent=solvent, smiles_fix=fix)
+    base = os.path.basename(cache_path)
+    solvent = "Hexane" if "Hexane" in base else "Water"
+    # "meanedge" in the name asks for the mean-distance edge set of Eq. (6),
+    # which only the "w/o ensemble geometry" ablation uses.
+    select = "meandist" if "meanedge" in base else "occupancy"
+    print("Summarising the %s ensembles into %s (%s edges).\n"
+          "  This reads 100 MD frames per peptide from %s and happens once;\n"
+          "  it takes a couple of minutes, and later runs reuse the result."
+          % (solvent.lower(), base, select, traj), flush=True)
+    build_cache(cache_path, annot, traj, csv_path, solvent=solvent, smiles_fix=fix,
+                jobs=_jobs(), select=select)
 
 class MechData:
     def __init__(self, cache_path, label_csv, label_col="PAMPA",
@@ -121,6 +138,8 @@ class MechData:
         self.solvent_token = bool(solvent_token)
         self.alt = None
         if alt_cache:
+            if not os.path.exists(alt_cache) or os.path.getsize(alt_cache) == 0:
+                ensure_cache(alt_cache)
             with open(alt_cache, "rb") as fh:
                 self.alt = pickle.load(fh)["feat"]
             self.feat = {p: g for p, g in self.feat.items() if p in self.alt}

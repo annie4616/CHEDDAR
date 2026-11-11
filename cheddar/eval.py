@@ -30,6 +30,12 @@ from .train import SEEDS, SPLITS, denorm, metrics, resolve, run_epoch
 
 CKPT = "cheddar-%s-s%d.pt"
 
+# The CHEDDAR row of Table 1, so the summary can say whether this machine
+# reproduced it rather than leaving the reader to compare by eye.
+TABLE1 = {"ID": (0.145, 0.621), "OD_Murcko": (0.236, 0.660), "Cliff_ratio": (0.142, 0.683)}
+NAMED = {"ID": "the random split", "OD_Murcko": "the scaffold split",
+         "Cliff_ratio": "the activity-cliff split"}
+
 
 def load(cfg, split, device):
     """Dataset, loaders and a fresh model for one split. The scaler is fitted on
@@ -77,6 +83,8 @@ def main():
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--partition", default="test", choices=("train", "val", "test"))
     ap.add_argument("--all", action="store_true", help="every split and seed, mean +- sd")
+    ap.add_argument("--brief", action="store_true",
+                    help="one progress line per checkpoint instead of its metrics json")
     ap.add_argument("--out", default=None, help="write predictions.csv here")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     a = ap.parse_args()
@@ -94,7 +102,7 @@ def main():
         root = Path(a.data_root) / a.ckpt_dir if not os.path.isabs(a.ckpt_dir) else Path(a.ckpt_dir)
         jobs = [(s, d, str(root / (CKPT % (s, d)))) for s in splits for d in seeds]
 
-    rows, cached = {}, {}
+    rows, cached, npart = {}, {}, {}
     for split, seed, path in jobs:
         if not os.path.exists(path):
             print("MISSING %s" % path, flush=True)
@@ -103,10 +111,16 @@ def main():
             c = resolve(dict(cfg, split=split), a.data_root)
             cached[split] = load(c, split, a.device)
         data, ids, loaders, model, both = cached[split]
+        npart[split] = len(ids[a.partition])
         m, y, p = score(model, path, loaders[a.partition], a.device, both)
         rows.setdefault(split, []).append(m)
-        print(json.dumps({"split": split, "seed": seed, "partition": a.partition,
-                          "n": len(ids[a.partition]), **m}), flush=True)
+        if a.brief:
+            print("  %-12s seed %-3d %4d %s peptides   mse %.4f  r2 %.4f"
+                  % (split, seed, len(ids[a.partition]), a.partition, m["mse"], m["r2"]),
+                  flush=True)
+        else:
+            print(json.dumps({"split": split, "seed": seed, "partition": a.partition,
+                              "n": len(ids[a.partition]), **m}), flush=True)
         if a.out:
             Path(a.out).parent.mkdir(parents=True, exist_ok=True)
             with open(a.out, "w", newline="") as f:
@@ -118,13 +132,36 @@ def main():
 
     if len(jobs) > 1:
         print("\n%-12s %4s  %-16s %-16s" % ("split", "n", "MSE", "R2"))
+        agg = {}
         for split in SPLITS:
             v = rows.get(split)
             if not v:
                 continue
-            f = lambda k: (np.mean([x[k] for x in v]), np.std([x[k] for x in v], ddof=1))
+            f = lambda k: (float(np.mean([x[k] for x in v])),
+                           float(np.std([x[k] for x in v], ddof=1)) if len(v) > 1 else 0.0)
+            agg[split] = (len(v), f("mse"), f("r2"))
             print("%-12s %4d  %.3f +- %.3f    %.3f +- %.3f"
-                  % (split, len(v), *f("mse"), *f("r2")))
+                  % (split, len(v), *agg[split][1], *agg[split][2]))
+        print()
+        ok = []
+        word = {"test": "held-out", "val": "validation", "train": "training"}[a.partition]
+        for split, (n, (mse, msd), (r2, rsd)) in agg.items():
+            print("On %s, %d seed%s give a %s mean squared error of %.3f (sd %.3f) and an "
+                  "R2 of %.3f (sd %.3f) over %d %s peptides."
+                  % (NAMED.get(split, split), n, "" if n == 1 else "s", a.partition,
+                     mse, msd, r2, rsd, npart[split], word))
+            if split in TABLE1:
+                ok.append(abs(mse - TABLE1[split][0]) <= 0.0015
+                          and abs(r2 - TABLE1[split][1]) <= 0.0015)
+        if ok and all(ok) and len(ok) == len(TABLE1):
+            print("All three agree with Table 1 of the paper to the printed precision.")
+        elif ok:
+            bad = [s for s, (n, (m, _), (r, _)) in agg.items() if s in TABLE1 and
+                   (abs(m - TABLE1[s][0]) > 0.0015 or abs(r - TABLE1[s][1]) > 0.0015)]
+            if bad:
+                print("Differs from Table 1 on %s; the paper reports %s."
+                      % (", ".join(bad),
+                         ", ".join("%.3f / %.3f" % TABLE1[s] for s in bad)))
 
 
 if __name__ == "__main__":
