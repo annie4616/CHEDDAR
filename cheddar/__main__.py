@@ -139,5 +139,24 @@ def main():
         raise SystemExit("unknown command: %s" % cmd)
 
 
+def _cli():
+    """main(), with the expected setup failures reported as messages.
+
+    A missing environment variable or an absent data file is something the
+    reader has to go and fix, not a defect in this code, so it is printed as a
+    sentence rather than as a traceback. Anything else propagates untouched,
+    because a real bug should still show where it came from.
+    """
+    try:
+        main()
+    except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
+        sys.stderr.write("\n%s\n\nRun `python -m cheddar check` to see what is "
+                         "present and what is missing.\n" % e)
+        raise SystemExit(1)
+    except KeyboardInterrupt:
+        sys.stderr.write("\ninterrupted\n")
+        raise SystemExit(130)
+
+
 if __name__ == "__main__":
-    main()
+    _cli()
