@@ -10,13 +10,22 @@ in 2.3 ms per peptide.
 
 ## If you only want a prediction
 
+Four steps, in this order. Step 3 downloads 1.6 GB, unpacks it to 10.2 GB and needs about
+12.5 GB of free disk while it does so. It is the only slow step, it runs once, and
+everything afterwards takes seconds.
+
 ```bash
-conda env create -f environment.yml && conda activate cheddar
-./predict.sh 5222
+conda env create -f environment.yml && conda activate cheddar   # 1. install, about 3 min
+python -m cheddar check                                         # 2. what is already here
+python -m cheddar data                                          # 3. get the MD data, 1.6 GB
+./predict.sh 5222                                               # 4. predict
 ```
 
-That is the whole thing. `5222` is a CycPeptMPDB id; name as many as you like, or run
-`./predict.sh` with no arguments for a worked example. The answer looks like this:
+Step 2 prints what is present and what is missing, and step 3 is a no-op if you already have
+the trajectories, so running both costs nothing when they are not needed.
+
+`5222` is a CycPeptMPDB id; name as many as you like, or run `./predict.sh` with no
+arguments for a worked example. The answer looks like this:
 
 ```
 id          logPapp     sd   measured partition
@@ -59,14 +68,18 @@ first, placed in the trajectory folder under the same naming as the public relea
 The first command you run builds a summary of those trajectories and takes a couple of
 minutes. Everything after that takes seconds.
 
-## The five commands
+## The six commands
+
+Listed in the order you would run them. The first two are setup and only matter once; most
+readers never need the last two.
 
 ```bash
-python -m cheddar check         # versions, device, which data files are present
-python -m cheddar data          # locate the trajectories, or download and unpack them
-python -m cheddar eval          # score the shipped checkpoints (the default command)
-python -m cheddar predict 5222  # permeability for named peptides, about 8 s
-python -m cheddar sweep         # retrain 3 splits x 5 seeds, one worker per free GPU
+python -m cheddar check                      # versions, device, which data files are present
+python -m cheddar data                       # locate the trajectories, or download and unpack them
+python -m cheddar predict 5222               # permeability for named peptides, about 8 s
+python -m cheddar eval                       # score the shipped checkpoints (the default command)
+python -m cheddar train --split ID --seed 1  # retrain one model, about 31 min on a GPU
+python -m cheddar sweep                      # retrain 3 splits x 5 seeds, one worker per free GPU
 ```
 
 `./predict.sh` is a thin wrapper over `python -m cheddar predict`, so anything you can pass
@@ -182,7 +195,7 @@ sweep. Runs are named after the config, for example `runs/abl_water_only-ID-s1/`
 ```
 predict.sh   one-click prediction, the only entry point most readers need
 cheddar/     __init__.py  marks the package, empty
-             __main__.py  the five commands above
+             __main__.py  the six commands above
              fetch.py     find the trajectories, or download the Zenodo record
              features.py  cache construction from MD frames, split and label IO
              data.py      cache reader, standardization, label scaling
