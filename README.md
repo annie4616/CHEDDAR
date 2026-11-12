@@ -59,21 +59,7 @@ value of `train` means the figure is in-sample and correspondingly optimistic. T
 ./predict.sh 4705 --split OD_Murcko
 ```
 
-## The six commands
-
-Listed in the order in which they would be run. The first two concern setup and are
-relevant only once; the last two are required only for retraining.
-
-```bash
-python -m cheddar check                      # versions, device, which data files are present
-python -m cheddar data                       # locate the trajectories, or download and unpack them
-python -m cheddar predict 5222               # permeability for named peptides, about 8 s
-python -m cheddar eval                       # score the shipped checkpoints (the default command)
-python -m cheddar train --split ID --seed 1  # retrain one model, about 31 min on a GPU
-python -m cheddar sweep                      # retrain 3 splits x 5 seeds, one worker per free GPU
-```
-
-`./predict.sh` is a thin wrapper over `python -m cheddar predict`, and accepts the same
+`./predict.sh` is a thin wrapper over `python -m cheddar predict` and accepts the same
 arguments: `--partition test` for an entire partition, `--all` for every peptide, and
 `--out results.csv` to write the results to a file.
 
@@ -83,12 +69,14 @@ the visible GPU and the data files located, without executing any computation.
 ## Reproducing the paper
 
 ```bash
-python -m cheddar          # scores the 15 shipped checkpoints, prints the paper's main row
+python -m cheddar          # equivalently, python -m cheddar eval
 ```
 
-No arguments or paths are required. Scoring all fifteen checkpoints takes approximately
-three minutes, the greater part of which is spent reading the two caches. It runs without a
-GPU, though several times more slowly. The output is
+This scores the fifteen provided checkpoints and prints the paper's main row; `eval` is the
+default command, so it may be omitted. No arguments or paths are required. Scoring all
+fifteen checkpoints takes approximately three minutes, the greater part of which is spent
+reading the two caches. It runs without a GPU, though several times more slowly. The output
+is
 
 ```
 split           n  MSE              R2
@@ -189,7 +177,7 @@ that table amounts to a single sweep. Runs are named after the configuration, fo
 ```
 predict.sh   single-command prediction, the entry point most readers require
 cheddar/     __init__.py  marks the package, empty
-             __main__.py  the six commands above
+             __main__.py  the command line; `python -m cheddar --help` lists every command
              fetch.py     find the trajectories, or download the Zenodo record
              features.py  cache construction from MD frames, split and label IO
              data.py      cache reader, standardization, label scaling
