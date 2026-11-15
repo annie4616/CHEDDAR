@@ -2,21 +2,33 @@
 
 Cyclic-peptide membrane permeability from solvent-dependent conformational ensembles.
 
-## The task
+Each peptide becomes two atom graphs, one per explicit-solvent MD ensemble (water and
+hexane). Atom features are statistics over 100 frames rather than one structure, contact
+edges are selected by how often a pair stays in contact, and the two solvent predictions are
+averaged. The model has 554,561 parameters, trains in about 31 min on one GPU and predicts
+in 2.3 ms per peptide.
 
-Most drugs are either small enough to cross a cell membrane or large enough to bind a
-difficult target, rarely both. Cyclic peptides are of interest because they can be both, but
-only some of them cross, and which ones do is hard to anticipate: measuring permeability
-requires a laboratory assay for every candidate, which is what makes a reliable prediction
-worth having.
+## Cyclic peptide permeability prediction
 
-What makes the prediction hard is that a cyclic peptide has no single shape. It is flexible,
-and it adapts to its surroundings, presenting polar groups to water and tucking them away in
-a greasy environment such as the interior of a membrane. A single static structure therefore
-describes the molecule in neither setting. CHEDDAR takes the molecule as it behaves in both:
-it reads a molecular-dynamics ensemble in water and another in hexane, a stand-in for the
-membrane core, and predicts `log P_app`, the rate at which the peptide crosses in a PAMPA
-assay.
+A cyclic peptide is a short peptide whose backbone is closed into a ring. The ring presents a
+large, flat interaction surface that can engage targets small molecules cannot bind, and the
+closed backbone resists proteolysis, so the class is small enough to remain orally available
+in principle, which no biologic is. That last property is the one that usually fails: cyclic
+peptides are large and heavily hydrogen-bonded, and the overwhelming majority cannot cross a
+lipid membrane. Passive permeability is the measurable property to which oral bioavailability
+reduces, and predicting it is the bottleneck this model addresses.
+
+Permeability in this class is not a property of a single structure. It is a property of how
+the molecule reorganizes between environments. A permeable macrocycle behaves as a molecular
+chameleon: in water it exposes polar surface and hydrogen-bonds to solvent, while in the
+hydrophobic interior of the bilayer it collapses into a compact conformer, sequestering its
+polar groups into intramolecular hydrogen bonds. Diastereomers show this directly, since two
+peptides differing only in stereochemistry can differ in permeability by orders of magnitude.
+What separates a permeable peptide from an impermeable one is therefore the difference
+between its aqueous and its apolar conformational preference, which no single conformer and
+no environment-independent descriptor can express. CHEDDAR makes that solvent pair the object
+of study, reading an explicit-solvent ensemble in water and another in hexane, a stand-in for
+the membrane core, and predicting `log P_app` as measured by a PAMPA assay.
 
 ## Architecture
 
@@ -25,15 +37,11 @@ assay.
 A peptide enters as two graphs, one per solvent, sharing nodes and bonds and differing only
 in the geometry read off the water and hexane ensembles and in the solvent token carried on
 every node. Atom features combine a chemical block, an ensemble-geometry block and that
-token; bonded and through-space relations carry disjoint feature blocks and separate encoders
+token; bonded and 3D-contact relations carry disjoint feature blocks and separate encoders
 and message MLPs, so their aggregates reach the node update without being merged. Pooling
 concatenates the sum, mean and maximum statistics and leaves their weighting to the head,
 which is bounded to the normalized label range. The two views are never compared inside the
-model -- each contributes its own loss term -- and are averaged only at evaluation.
-
-Atom features are statistics over 100 frames rather than one structure, and contact edges are
-selected by how often a pair stays in contact. The model has 554,561 parameters, trains in
-about 31 min on one GPU and predicts in 2.3 ms per peptide.
+model -- each contributes its own loss term -- and are averaged only at inference.
 
 ## Obtaining a prediction
 
