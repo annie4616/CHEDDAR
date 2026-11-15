@@ -10,25 +10,22 @@ in 2.3 ms per peptide.
 
 ## Cyclic peptide permeability prediction
 
-A cyclic peptide is a short peptide whose backbone is closed into a ring. The ring presents a
-large, flat interaction surface that can engage targets small molecules cannot bind, and the
-closed backbone resists proteolysis, so the class is small enough to remain orally available
-in principle, which no biologic is. That last property is the one that usually fails: cyclic
-peptides are large and heavily hydrogen-bonded, and the overwhelming majority cannot cross a
-lipid membrane. Passive permeability is the measurable property to which oral bioavailability
-reduces, and predicting it is the bottleneck this model addresses.
+A cyclic peptide is a short peptide whose backbone is closed into a ring. The class combines
+broad interaction surfaces with conformational constraints that can improve resistance to
+proteolysis, which makes it attractive for targets that conventional small molecules struggle
+to address. Many cyclic peptides, however, have limited passive membrane permeability, which
+restricts access to intracellular targets and contributes to poor oral absorption. Predicting
+permeability is therefore a useful step in identifying promising candidates, particularly for
+scaffolds beyond those already measured.
 
-Permeability in this class is not a property of a single structure. It is a property of how
-the molecule reorganizes between environments. A permeable macrocycle behaves as a molecular
-chameleon: in water it exposes polar surface and hydrogen-bonds to solvent, while in the
-hydrophobic interior of the bilayer it collapses into a compact conformer, sequestering its
-polar groups into intramolecular hydrogen bonds. Diastereomers show this directly, since two
-peptides differing only in stereochemistry can differ in permeability by orders of magnitude.
-What separates a permeable peptide from an impermeable one is therefore the difference
-between its aqueous and its apolar conformational preference, which no single conformer and
-no environment-independent descriptor can express. CHEDDAR makes that solvent pair the object
-of study, reading an explicit-solvent ensemble in water and another in hexane, a stand-in for
-the membrane core, and predicting `log P_app` as measured by a PAMPA assay.
+Permeability here depends on chemical composition and on whether polar groups are exposed or
+shielded, which can change substantially with stereochemistry. Solvent-dependent
+conformational preferences allow a molecule to expose polar groups in the aqueous environment
+around the membrane while favouring intramolecular hydrogen bonding and polar-group burial in
+its nonpolar core, a behaviour termed molecular chameleonicity. A representation of the
+molecule therefore has to cover both environments and describe the conformational
+distribution within each. CHEDDAR does this by reading independently sampled explicit-solvent
+ensembles in water and in hexane, and predicts `log P_app` as measured by a PAMPA assay.
 
 ## Architecture
 
