@@ -119,7 +119,9 @@ def main():
                     solvent_token=cfg.get("solvent_token", True),
                     alt_cache=cfg.get("alt_cache"),
                     meanonly=cfg.get("meanonly", False),
-                    drop_space_cols=cfg.get("drop_space_cols", ()))
+                    drop_space_cols=cfg.get("drop_space_cols", ()),
+                    mask_node_cols=cfg.get("mask_node_cols", ()),
+                    mask_space_cols=cfg.get("mask_space_cols", ()))
     sp = lambda f: data.usable(read_split(cfg["split_csv"], f))
     tr, va, te = sp("train"), sp("val"), sp("test")
     zv = data.fit_scaler(tr)
@@ -142,6 +144,11 @@ def main():
                       "space_dim": data.space_dim, "n_params": nparam,
                       "edge_block": data.edge_block,
                       "meanonly": data.meanonly, "dropped": data.dropped,
+                      "masked_node": data.masked_node,
+                      "masked_space": data.masked_space,
+                      "cache": os.path.basename(cfg["cache"]),
+                      "alt_cache": (os.path.basename(cfg["alt_cache"])
+                                    if cfg.get("alt_cache") else None),
                       "both_solvents": BOTH,
                       "train": len(tr), "val": len(va), "test": len(te), **zv}), flush=True)
 

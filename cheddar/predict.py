@@ -80,7 +80,11 @@ def predict(ids, split="ID", seeds=SEEDS, device=None, ckpt_dir=None, batch=64):
     data = MechData(cfg["cache"], cfg["label_csv"], cfg.get("label_col", "PAMPA"),
                     edge_block=cfg.get("edge_block", "both"),
                     solvent_token=cfg.get("solvent_token", True),
-                    alt_cache=cfg.get("alt_cache"))
+                    alt_cache=cfg.get("alt_cache"),
+                    meanonly=cfg.get("meanonly", False),
+                    drop_space_cols=cfg.get("drop_space_cols", ()),
+                    mask_node_cols=cfg.get("mask_node_cols", ()),
+                    mask_space_cols=cfg.get("mask_space_cols", ()))
     data.fit_scaler(data.usable(read_split(cfg["split_csv"], "train")))
     if ids is None:
         ids = sorted(data.feat)

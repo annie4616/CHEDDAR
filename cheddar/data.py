@@ -79,7 +79,8 @@ def ensure_cache(cache_path):
 class MechData:
     def __init__(self, cache_path, label_csv, label_col="PAMPA",
                  edge_block="both", solvent_token=True, alt_cache=None,
-                 meanonly=False, drop_space_cols=()):
+                 meanonly=False, drop_space_cols=(),
+                 mask_node_cols=(), mask_space_cols=()):
         if not os.path.exists(cache_path) or os.path.getsize(cache_path) == 0:
             ensure_cache(cache_path)
         with open(cache_path, "rb") as f:
@@ -126,6 +127,29 @@ class MechData:
 
         self.dropped = list(drop_space_cols or ())
         self._sidx = _prune(self._sidx, sc, drop_space_cols, "space")
+
+        # Masking, as distinct from dropping. A masked column is standardized
+        # as usual and then set to 0.0, so the feature width and therefore the
+        # parameter count are unchanged; only the information is withheld. This
+        # is how the "w/o ensemble geometry" row of Table 2 was produced, and it
+        # is not the same as meanonly, which removes the columns outright.
+        def _mask_positions(names, want, keep, what):
+            want = [str(c) for c in (want or ())]
+            if not want:
+                return []
+            unknown = [c for c in want if c not in names]
+            if unknown:
+                raise ValueError("mask_%s_cols: unknown column(s) %s" % (what, unknown))
+            want = set(want)
+            pos = [j for j, i in enumerate(keep) if names[i] in want]
+            if len(pos) == len(keep):
+                raise ValueError("mask_%s_cols would mask every column" % what)
+            return pos
+
+        self.masked_node = list(mask_node_cols or ())
+        self.masked_space = list(mask_space_cols or ())
+        self._nmask = _mask_positions(cols, mask_node_cols, self._nidx, "node")
+        self._smask = _mask_positions(sc, mask_space_cols, self._sidx, "space")
         # edge_block="bond" drops the whole 3D contact relation: the
         # "w/o 3D contact edges" ablation of Table 2.
         if edge_block not in ("both", "bond"):
@@ -171,6 +195,9 @@ class MechData:
         g = self.feat[pid] if which == "base" else self.alt[pid]
         mu, sd = self._st["node"]
         x = ((g["node"] - mu) / sd)[:, self._nidx]
+        if self._nmask:
+            x = x.copy()
+            x[:, self._nmask] = 0.0
         if self.solvent_token:
             tok = np.full((x.shape[0], 1), 0.0 if which == "base" else 1.0, dtype=x.dtype)
             x = np.hstack([x, tok])
@@ -178,6 +205,9 @@ class MechData:
         ba = ((g["bond_attr"] - mu) / sd)[:, self._bkeep]
         mu, sd = self._st["space"]
         sa = ((g["space_attr"] - mu) / sd)[:, self._sidx]
+        if self._smask:
+            sa = sa.copy()
+            sa[:, self._smask] = 0.0
         t = lambda a, dt=np.float32: torch.from_numpy(np.ascontiguousarray(a, dt))
         if self.edge_block == "bond":
             sa = sa[:0]

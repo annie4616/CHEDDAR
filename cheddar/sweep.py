@@ -183,9 +183,14 @@ def main():
     cfg = json.load(open(a.config))
     from .data import ensure_cache
     for key in ("cache", "alt_cache"):
-        p = ROOT / cfg[key]
+        # A single-solvent arm has no alt_cache, so an absent key is skipped
+        # rather than being an error.
+        rel = cfg.get(key)
+        if not rel:
+            continue
+        p = ROOT / rel
         if not p.exists() or p.stat().st_size == 0:
-            print("building %s first, so the workers do not race for it" % cfg[key], flush=True)
+            print("building %s first, so the workers do not race for it" % rel, flush=True)
             ensure_cache(str(p))
 
     queue, running, done, t0 = list(jobs), {}, [], time.time()

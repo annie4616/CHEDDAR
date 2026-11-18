@@ -45,7 +45,9 @@ def load(cfg, split, device):
                     solvent_token=cfg.get("solvent_token", True),
                     alt_cache=cfg.get("alt_cache"),
                     meanonly=cfg.get("meanonly", False),
-                    drop_space_cols=cfg.get("drop_space_cols", ()))
+                    drop_space_cols=cfg.get("drop_space_cols", ()),
+                    mask_node_cols=cfg.get("mask_node_cols", ()),
+                    mask_space_cols=cfg.get("mask_space_cols", ()))
     sp = lambda f: data.usable(read_split(cfg["split_csv"].format(split=split)
                                           if "{split}" in cfg["split_csv"] else cfg["split_csv"], f))
     ids = {f: sp(f) for f in ("train", "val", "test")}
