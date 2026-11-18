@@ -8,6 +8,38 @@ edges are selected by how often a pair stays in contact, and the two solvent pre
 averaged. The model has 554,561 parameters, trains in about 31 min on one GPU and predicts
 in 2.3 ms per peptide.
 
+## Cyclic peptide permeability prediction
+
+A cyclic peptide is a short peptide whose backbone is closed into a ring. The class combines
+broad interaction surfaces with conformational constraints that can improve resistance to
+proteolysis, which makes it attractive for targets that conventional small molecules struggle
+to address. Many cyclic peptides, however, have limited passive membrane permeability, which
+restricts access to intracellular targets and contributes to poor oral absorption. Predicting
+permeability is therefore a useful step in identifying promising candidates, particularly for
+scaffolds beyond those already measured.
+
+Permeability here depends on chemical composition and on whether polar groups are exposed or
+shielded, which can change substantially with stereochemistry. Solvent-dependent
+conformational preferences allow a molecule to expose polar groups in the aqueous environment
+around the membrane while favouring intramolecular hydrogen bonding and polar-group burial in
+its nonpolar core, a behaviour termed molecular chameleonicity. A representation of the
+molecule therefore has to cover both environments and describe the conformational
+distribution within each. CHEDDAR does this by reading independently sampled explicit-solvent
+ensembles in water and in hexane, and predicts `log P_app` as measured by a PAMPA assay.
+
+## Architecture
+
+![The CHEDDAR architecture](docs/architecture.png)
+
+A peptide enters as two graphs, one per solvent, sharing nodes and bonds and differing only
+in the geometry read off the water and hexane ensembles and in the solvent token carried on
+every node. Atom features combine a chemical block, an ensemble-geometry block and that
+token; bonded and 3D-contact relations carry disjoint feature blocks and separate encoders
+and message MLPs, so their aggregates reach the node update without being merged. Pooling
+concatenates the sum, mean and maximum statistics and leaves their weighting to the head,
+which is bounded to the normalized label range. The two views are never compared inside the
+model -- each contributes its own loss term -- and are averaged only at inference.
+
 ## Obtaining a prediction
 
 Four steps, in the order given. Step 3 downloads 1.6 GB, unpacks it to 10.2 GB and requires
