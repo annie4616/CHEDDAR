@@ -7,6 +7,14 @@ inference rule of Section 3.4.
 
   python -m cheddar.eval configs/cheddar.json --ckpt ckpts/cheddar-ID-s1.pt
   python -m cheddar.eval configs/cheddar.json --all        # 15 runs, mean +- sd
+  python -m cheddar.eval configs/cheddar.json --all --ensemble   # the predict.sh rule
+
+Table 1 scores each seed on its own and reports the mean and sd across seeds,
+which is what --all prints. With --ensemble the five seeds of a split are
+averaged into a single prediction per peptide first and that prediction is
+scored once, which is the rule predict.py applies. The two answer different
+questions: the first is how well one training run does, the second is how well
+the released five-checkpoint model does.
 
 Paths inside a config may be relative; they are resolved against --data-root.
 """
@@ -85,6 +93,9 @@ def main():
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--partition", default="test", choices=("train", "val", "test"))
     ap.add_argument("--all", action="store_true", help="every split and seed, mean +- sd")
+    ap.add_argument("--ensemble", action="store_true",
+                    help="average the seeds into one prediction per peptide, then score "
+                         "it once (the rule predict.py uses)")
     ap.add_argument("--brief", action="store_true",
                     help="one progress line per checkpoint instead of its metrics json")
     ap.add_argument("--out", default=None, help="write predictions.csv here")
@@ -105,6 +116,7 @@ def main():
         jobs = [(s, d, str(root / (CKPT % (s, d)))) for s in splits for d in seeds]
 
     rows, cached, npart = {}, {}, {}
+    ens = {}            # split -> [labels, [prediction per seed]] for --ensemble
     for split, seed, path in jobs:
         if not os.path.exists(path):
             print("MISSING %s" % path, flush=True)
@@ -116,6 +128,12 @@ def main():
         npart[split] = len(ids[a.partition])
         m, y, p = score(model, path, loaders[a.partition], a.device, both)
         rows.setdefault(split, []).append(m)
+        if a.ensemble:
+            # The labels come back in loader order, which is fixed (shuffle=False),
+            # so the seeds line up row by row and can be averaged directly.
+            e = ens.setdefault(split, [y, []])
+            assert np.allclose(e[0], y), "labels differ between seeds of %s" % split
+            e[1].append(p)
         if a.brief:
             print("  %-12s seed %-3d %4d %s peptides   mse %.4f  r2 %.4f"
                   % (split, seed, len(ids[a.partition]), a.partition, m["mse"], m["r2"]),
@@ -164,6 +182,35 @@ def main():
                 print("Differs from Table 1 on %s; the paper reports %s."
                       % (", ".join(bad),
                          ", ".join("%.3f / %.3f" % TABLE1[s] for s in bad)))
+
+    if a.ensemble and ens:
+        print("\n%-12s %4s %6s  %-8s %-8s %-8s" % ("split", "n", "seeds", "MSE", "R2", "MAE"))
+        for split in SPLITS:
+            e = ens.get(split)
+            if not e:
+                continue
+            y, preds = e[0], e[1]
+            em = metrics(y, np.mean(preds, axis=0))
+            print("%-12s %4d %6d  %-8.3f %-8.3f %-8.3f"
+                  % (split, len(y), len(preds), em["mse"], em["r2"], em["mae"]))
+        print()
+        for split in SPLITS:
+            e = ens.get(split)
+            if not e:
+                continue
+            y, preds = e[0], e[1]
+            em = metrics(y, np.mean(preds, axis=0))
+            single = float(np.mean([x["mse"] for x in rows[split]]))
+            # A seed average can only help when the seeds err in different
+            # directions, so say which way it went rather than assuming a gain.
+            if single > 0:
+                d = 100.0 * (single - em["mse"]) / single
+                word = ("%.0f%% lower than" % d) if d >= 0.5 else (
+                        "%.0f%% higher than" % -d) if d <= -0.5 else "level with"
+                print("On %s, averaging the %d seeds gives a %s mean squared error of "
+                      "%.3f, %s the %.3f a single seed averages."
+                      % (NAMED.get(split, split), len(preds), a.partition,
+                         em["mse"], word, single))
 
 
 if __name__ == "__main__":

@@ -83,6 +83,25 @@ which the model was fitted.
 small `sd` indicates agreement among the five; a large one indicates that the peptide falls
 where they disagree, and the prediction should be weighted accordingly.
 
+Averaging the five is also what makes a prediction here slightly better than the paper's
+headline figure. Table 1 scores each training run separately and reports the mean across
+the five, which is the fair way to describe one run of the method; `predict.sh` instead
+averages the five into a single prediction, and that average is a little more accurate than
+a typical single run:
+
+| split | single run (Table 1) | the five averaged |
+| --- | --- | --- |
+| `ID` | 0.145 ± 0.003 | **0.138** |
+| `OD_Murcko` | 0.236 ± 0.018 | **0.219** |
+| `Cliff_ratio` | 0.142 ± 0.003 | **0.136** |
+
+Test mean squared error on the held-out partition; R² rises correspondingly to 0.638, 0.685
+and 0.697. The gain is 4–7 %, largest on the scaffold split where the seeds disagree most.
+That it is only a few per cent, rather than the fivefold reduction five independent errors
+would give, indicates that the seeds err mostly in the same direction: what remains is error
+of the model and the data, not of the random initialisation. `python -m cheddar.eval
+configs/cheddar.json --all --ensemble` prints both rows of the table above.
+
 `partition` indicates whether the peptide belonged to the training set of the model used. A
 value of `train` means the figure is in-sample and correspondingly optimistic. The option
 `--split OD_Murcko` selects a model that has not encountered the scaffold:
@@ -120,7 +139,9 @@ Cliff_ratio     5  0.142 +- 0.003    0.683 +- 0.006
 corresponding to the CHEDDAR row of Table 1, as the mean and standard deviation over seeds
 1, 2, 7, 13 and 42, followed by the same result stated in prose. The three splits are the
 random (`ID`), Bemis–Murcko scaffold (`OD_Murcko`) and activity-cliff (`Cliff_ratio`)
-partitions described in Appendix C.
+partitions described in Appendix C. Each seed is scored on its own here, which is what the
+paper reports; adding `--ensemble` scores the five averaged together instead, as
+[`predict.sh` does](#interpreting-the-output).
 
 Retraining from scratch yields the same table. `python -m cheddar sweep` rebuilds all fifteen
 models from random initialisation and reproduces every row above in both mean and standard
