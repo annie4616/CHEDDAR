@@ -5,6 +5,7 @@
     python -m cheddar data          find the MD trajectories, or download them
     python -m cheddar eval          score the checkpoints and say what that means
     python -m cheddar predict 5222  permeability for named peptides
+    python -m cheddar annotate      atom annotation for peptides of your own
     python -m cheddar sweep         retrain the grid, one worker per free GPU
     python -m cheddar train         one run (--split, --seed)
 
@@ -101,6 +102,11 @@ def data(argv):
     _run(fetch.main, ["cheddar.data"] + argv)
 
 
+def annotate(argv):
+    from . import annotate as an
+    _run(an.main, ["cheddar.annotate"] + argv)
+
+
 def sweep(argv):
     from . import sweep as sw
     cfg, rest = _config(argv)
@@ -136,6 +142,8 @@ def main():
         predict(rest)
     elif cmd == "data":
         data(rest)
+    elif cmd == "annotate":
+        annotate(rest)
     elif cmd == "sweep":
         sweep(rest)
     elif cmd == "train":

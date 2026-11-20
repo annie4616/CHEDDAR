@@ -44,7 +44,7 @@ model -- each contributes its own loss term -- and are averaged only at inferenc
 
 1. [Environment Setup](#environment-setup)
 2. [Datasets](#datasets)
-3. [Inference on Named Peptides](#inference-on-named-peptides)
+3. [Inference](#inference)
 4. [Training and Evaluation](#training-and-evaluation)
 5. [Ablations](#ablations)
 6. [Repository Layout](#repository-layout)
@@ -149,7 +149,9 @@ features inconsistent with their own trajectory.
 
 * * *
 
-## Inference on Named Peptides
+## Inference
+
+### Peptides in CycPeptMPDB-4D
 
 ```bash
 ./predict.sh 5222
@@ -197,6 +199,78 @@ Reading the output:
 ```bash
 ./predict.sh 4705 --split OOD
 ```
+
+### Peptides of your own
+
+The model reads MD ensembles, not SMILES, so a peptide that is not in
+CycPeptMPDB-4D needs **its own water and hexane trajectories first**. There is no
+path from a SMILES string alone. Given those trajectories, four steps:
+
+**1. Place the trajectories** where the feature pass looks for them, in either accepted
+layout:
+
+```
+my_data/Water/Trajectories/MD_MYPEP1_H2O_Traj.pdb
+my_data/Hexane/Trajectories/MD_MYPEP1_Hexane_Traj.pdb
+my_data/MYPEP1_Water_traj.npz          # or this layout, holding a 'coords' array
+```
+
+The released peptides have 100 frames each, evenly spaced over the production run, and the
+features are statistics over them. Fewer frames are accepted -- every frame present is used
+-- but the dispersion columns are what the ensemble contributes, and they are only as
+meaningful as the sampling behind them.
+
+**2. Add the peptides to the label table.** Copy the released csv and append one row per
+peptide, with an id of your own and its SMILES; leave `PAMPA` empty, as that is what is
+being predicted. The released rows have to stay, because the standardization of Appendix E
+is fitted on the training partition and those peptides must still be in the cache.
+
+```bash
+cp data/CycPeptMPDB-4D_new_imhb.csv my_data/labels.csv
+# then append:  MYPEP1,CC(C)[C@H]1NC(=O)...,
+```
+
+**3. Build the atom annotation.** The released `data/atom_annot.pkl` covers the 4,925
+peptides of the public release only, and the feature pass skips anything without an entry.
+This derives one from the SMILES and the first frame:
+
+```bash
+python -m cheddar annotate --traj my_data \
+                           --csv my_data/labels.csv \
+                           --merge data/atom_annot.pkl \
+                           --out my_data/annot.pkl \
+                           --ids MYPEP1
+```
+
+`--merge` keeps the released entries and adds yours; `--ids` limits the work to the
+peptides named, which saves walking the other 4,925 rows. What an entry supplies is the
+permutation between RDKit's atom order and the trajectory's, which no trajectory file
+records; the match is made on the molecular graph, and a peptide whose SMILES and frame
+disagree is reported rather than annotated. An `npz` trajectory needs an `elements` array
+beside its `coords` for this step, since a bare coordinate array does not say which atom is
+which; a pdb carries that in the file.
+
+**4. Rebuild the caches and predict**, pointing the environment at your files:
+
+```bash
+export CHEDDAR_TRAJ=my_data
+export CHEDDAR_ANNOT=my_data/annot.pkl
+export CHEDDAR_CSV=my_data/labels.csv
+export CHEDDAR_SMILES_FIX=data/nal_fix.json
+rm -f cache/ensemble_{Water,Hexane}_c100.pkl
+./predict.sh MYPEP1
+```
+
+The first command rebuilds both caches from every peptide in the new label table, which
+takes as long as the original build. `CHEDDAR_SMILES_FIX` has to be set explicitly because
+the correction is otherwise looked for beside the label csv, which is now yours.
+
+Two things to expect. A prediction outside the trained window is clipped: the label is
+trained on [−8, −4], so a value at either end means "beyond the trained range" rather than a
+precise figure. And atoms that the molecular graph cannot tell apart, such as the two methyls
+of a valine, may be assigned to each other's position; bond lengths are unaffected and the
+per-atom effect on this dataset is around 0.05 Å, but an annotation built here is not
+guaranteed identical to one built from the simulation's own atom order.
 
 * * *
 
@@ -358,6 +432,7 @@ cheddar/
   sweep.py          the 3 x 5 grid across free GPUs
   eval.py           score checkpoints without training
   predict.py        permeability for named peptides
+  annotate.py       atom annotation for peptides of your own
 configs/
   cheddar.json      every hyperparameter of the released model
   abl_*.json        the arms of Table 2

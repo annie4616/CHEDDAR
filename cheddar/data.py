@@ -227,7 +227,12 @@ class MechData:
                 "bond_attr": t(ba),
                 "space_index": torch.from_numpy(g["space_index"].astype(np.int64)),
                 "space_attr": t(sa),
-                "y": torch.tensor(self.labels[pid], dtype=torch.float32)}
+                # A peptide being predicted has no measured value, and the label
+                # is not read on that path. Training and evaluation only ever see
+                # ids from usable(), which requires one, so NaN cannot leak into
+                # a loss or a metric.
+                "y": torch.tensor(self.labels.get(pid, float("nan")),
+                                  dtype=torch.float32)}
 
     def view(self, ids, both=False):
         ids = self.usable(ids)
