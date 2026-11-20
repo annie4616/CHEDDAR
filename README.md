@@ -202,7 +202,13 @@ Reading the output:
 ## Training and Evaluation
 
 The fifteen models behind the paper ship in `ckpts/`, so the paper's main result can be
-reproduced without training (Table 1):
+reproduced without training. Scoring them two ways answers two different questions, and
+retraining is only needed to rebuild the checkpoints themselves.
+
+### Per-seed evaluation (Table 1)
+
+Each of the fifteen checkpoints is scored on its own and the five seeds of a split are
+reported as a mean with a standard deviation. This is what the paper reports.
 
 ```bash
 python -m cheddar eval     # equivalently, just: python -m cheddar
@@ -215,12 +221,15 @@ OOD         5  0.236 +- 0.018    0.660 +- 0.026
 Cliff       5  0.142 +- 0.003    0.683 +- 0.006
 ```
 
-The mean and standard deviation over seeds 1, 2, 7, 13 and 42, taking about three minutes on
-a CPU, most of it spent reading the two caches. The three splits are the random (`ID`),
-Bemis–Murcko scaffold (`OOD`) and activity-cliff (`Cliff`) partitions of Appendix C.
+Seeds 1, 2, 7, 13 and 42, taking about three minutes on a CPU, most of it spent reading the
+two caches. The three splits are the random (`ID`), Bemis–Murcko scaffold (`OOD`) and
+activity-cliff (`Cliff`) partitions of Appendix C.
 
-`--ensemble` instead averages the five seeds of a split into one prediction per peptide and
-scores that prediction once, which is what `predict.sh` returns:
+### Ensemble evaluation
+
+`--ensemble` first averages the five seeds of a split into a single prediction per peptide,
+then scores that prediction once. This is what `predict.sh` returns, so it is the accuracy of
+the released five-checkpoint model rather than of one training run.
 
 ```bash
 python -m cheddar eval --ensemble
@@ -233,8 +242,10 @@ OOD       490      5  0.219    0.685    0.360
 Cliff     493      5  0.136    0.697    0.252
 ```
 
-To rebuild the models instead, one run at a time or the whole grid. **A GPU is required
-here**, unlike everywhere else on this page.
+### Training
+
+Rebuilding the checkpoints, one run at a time or the whole grid. **A GPU is required here**,
+unlike everywhere else on this page.
 
 ```bash
 python -m cheddar train --split ID --seed 1     # one model, about 31 min
@@ -272,6 +283,8 @@ best.pt             the selected checkpoint
   All fifteen at once, two per card, took 51 min: 20–26 s per epoch, plus about 8 min at the
   start while fifteen processes read the same two 1 GB caches from one disk. A run peaks at
   0.72 GB of GPU memory, so sharing a card costs speed alone.
+
+### How training works
 
 **Objective.** Stochastic gradient descent on the measured permeabilities of the training
 peptides, minimising mean squared error on the scaled label. One pass over the training set
