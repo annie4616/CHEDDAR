@@ -6,11 +6,12 @@ scored on one partition with the two solvent views averaged, which is the
 inference rule of Section 3.4.
 
   python -m cheddar.eval configs/cheddar.json --ckpt ckpts/cheddar-ID-s1.pt
-  python -m cheddar.eval configs/cheddar.json --all              # 15 runs, mean +- sd
-  python -m cheddar.eval configs/cheddar.json --all --ensemble   # the seeds averaged
+  python -m cheddar.eval configs/cheddar.json --all     # all 15, two rows per split
 
-With --ensemble the five seeds of a split are averaged into a single prediction
-per peptide, and that prediction is scored once.
+Scoring the whole grid reports each split twice: the five seeds scored
+separately as a mean and sd, which is what the paper reports, and their
+predictions averaged into one per peptide and scored once, which is what
+predict.py returns.
 
 Paths inside a config may be relative; they are resolved against --data-root.
 """
@@ -88,10 +89,8 @@ def main():
     ap.add_argument("--split", default=None, choices=SPLITS)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--partition", default="test", choices=("train", "val", "test"))
-    ap.add_argument("--all", action="store_true", help="every split and seed, mean +- sd")
-    ap.add_argument("--ensemble", action="store_true",
-                    help="average the seeds into one prediction per peptide, then score "
-                         "it once")
+    ap.add_argument("--all", action="store_true",
+                    help="every split and seed, per seed and as an ensemble")
     ap.add_argument("--brief", action="store_true",
                     help="one progress line per checkpoint instead of its metrics json")
     ap.add_argument("--out", default=None, help="write predictions.csv here")
@@ -112,7 +111,7 @@ def main():
         jobs = [(s, d, str(root / (CKPT % (s, d)))) for s in splits for d in seeds]
 
     rows, cached, npart = {}, {}, {}
-    ens = {}            # split -> [labels, [prediction per seed]] for --ensemble
+    ens = {}            # split -> [labels, [prediction per seed]]
     for split, seed, path in jobs:
         if not os.path.exists(path):
             print("MISSING %s" % path, flush=True)
@@ -124,12 +123,11 @@ def main():
         npart[split] = len(ids[a.partition])
         m, y, p = score(model, path, loaders[a.partition], a.device, both)
         rows.setdefault(split, []).append(m)
-        if a.ensemble:
-            # The labels come back in loader order, which is fixed (shuffle=False),
-            # so the seeds line up row by row and can be averaged directly.
-            e = ens.setdefault(split, [y, []])
-            assert np.allclose(e[0], y), "labels differ between seeds of %s" % split
-            e[1].append(p)
+        # The labels come back in loader order, which is fixed (shuffle=False), so
+        # the seeds line up row by row and their predictions can be averaged.
+        e = ens.setdefault(split, [y, []])
+        assert np.allclose(e[0], y), "labels differ between seeds of %s" % split
+        e[1].append(p)
         if a.brief:
             print("  %-12s seed %-3d %4d %s peptides   mse %.4f  r2 %.4f"
                   % (split, seed, len(ids[a.partition]), a.partition, m["mse"], m["r2"]),
@@ -146,35 +144,15 @@ def main():
                 for q, yy, pp in zip(pids, y, p):
                     w.writerow([q, "%.6f" % yy, "%.6f" % pp])
 
-    if a.ensemble and len(jobs) < 2:
-        # Nothing to average, so say so rather than ignoring the flag in silence.
-        print("\n--ensemble needs more than one checkpoint; pass --all.")
     if len(jobs) > 1:
         word = {"test": "held-out", "val": "validation", "train": "training"}[a.partition]
-        if a.ensemble:
-            # One prediction per peptide, the seeds averaged, scored once.
-            print("\n%-8s %4s %6s  %-8s %-8s %-8s"
-                  % ("split", "n", "seeds", "MSE", "R2", "MAE"))
-            agg = {}
-            for split in SPLITS:
-                e = ens.get(split)
-                if not e:
-                    continue
-                y, preds = e[0], e[1]
-                agg[split] = (len(preds), metrics(y, np.mean(preds, axis=0)))
-                print("%-8s %4d %6d  %-8.3f %-8.3f %-8.3f"
-                      % (split, len(y), len(preds), agg[split][1]["mse"],
-                         agg[split][1]["r2"], agg[split][1]["mae"]))
-            print()
-            for split, (k, m) in agg.items():
-                print("On %s, the %d seeds averaged into one prediction give a %s mean "
-                      "squared error of %.3f and an R2 of %.3f over %d %s peptides."
-                      % (NAMED.get(split, split), k, a.partition, m["mse"], m["r2"],
-                         npart[split], word))
-            return
-
-        print("\n%-8s %4s  %-16s %-16s" % ("split", "n", "MSE", "R2"))
-        agg = {}
+        # Two rows per split: the seeds scored separately, which is what the paper
+        # reports, and their predictions averaged into one, which is what predict.py
+        # returns. The count columns are named apart because they are different
+        # things -- peptides scored, and checkpoints averaged over.
+        print("\n%-8s %-10s %4s %5s  %-15s %-15s %-6s"
+              % ("split", "scoring", "nmol", "seeds", "MSE", "R2", "MAE"))
+        agg, ea = {}, {}
         for split in SPLITS:
             v = rows.get(split)
             if not v:
@@ -182,8 +160,17 @@ def main():
             f = lambda k: (float(np.mean([x[k] for x in v])),
                            float(np.std([x[k] for x in v], ddof=1)) if len(v) > 1 else 0.0)
             agg[split] = (len(v), f("mse"), f("r2"))
-            print("%-8s %4d  %.3f +- %.3f    %.3f +- %.3f"
-                  % (split, len(v), *agg[split][1], *agg[split][2]))
+            print("%-8s %-10s %4d %5d  %-15s %-15s %-6.3f"
+                  % (split, "per seed", npart[split], len(v),
+                     "%.3f +- %.3f" % agg[split][1],
+                     "%.3f +- %.3f" % agg[split][2], f("mae")[0]))
+            e = ens.get(split)
+            if e and len(e[1]) > 1:
+                m = metrics(e[0], np.mean(e[1], axis=0))
+                ea[split] = m
+                print("%-8s %-10s %4d %5d  %-15.3f %-15.3f %-6.3f"
+                      % ("", "ensemble", npart[split], len(e[1]),
+                         m["mse"], m["r2"], m["mae"]))
         print()
         ok = []
         for split, (n, (mse, msd), (r2, rsd)) in agg.items():
@@ -191,11 +178,14 @@ def main():
                   "R2 of %.3f (sd %.3f) over %d %s peptides."
                   % (NAMED.get(split, split), n, "" if n == 1 else "s", a.partition,
                      mse, msd, r2, rsd, npart[split], word))
+            if split in ea:
+                print("   Averaging those %d into one prediction per peptide gives %.3f, "
+                      "which is what predict.sh returns." % (n, ea[split]["mse"]))
             if split in TABLE1:
                 ok.append(abs(mse - TABLE1[split][0]) <= 0.0015
                           and abs(r2 - TABLE1[split][1]) <= 0.0015)
         if ok and all(ok) and len(ok) == len(TABLE1):
-            print("All three agree with Table 1 of the paper to the printed precision.")
+            print("The per-seed rows agree with Table 1 of the paper to the printed precision.")
         elif ok:
             bad = [s for s, (n, (m, _), (r, _)) in agg.items() if s in TABLE1 and
                    (abs(m - TABLE1[s][0]) > 0.0015 or abs(r - TABLE1[s][1]) > 0.0015)]
@@ -203,6 +193,7 @@ def main():
                 print("Differs from Table 1 on %s; the paper reports %s."
                       % (", ".join(bad),
                          ", ".join("%.3f / %.3f" % TABLE1[s] for s in bad)))
+
 
 if __name__ == "__main__":
     main()

@@ -188,8 +188,8 @@ Reading the output:
   against the 4,925 measured peptides, that being the only scale the model was fitted on.
 - `sd` is the spread across the five models. A small value means they agree; a large one
   means the peptide falls where they disagree, and the prediction should be weighted
-  accordingly. For how accurate these averaged predictions are in general, see
-  [Ensemble prediction](#ensemble-prediction).
+  accordingly. For how accurate these averaged predictions are in general, see the
+  `ensemble` row under [Training and Evaluation](#training-and-evaluation).
 - `partition` says whether the peptide was in the training set of the model used. `train`
   means the figure is in-sample, so optimistic. `--split OOD` selects a model that has not
   encountered the scaffold:
@@ -203,56 +203,37 @@ Reading the output:
 ## Training and Evaluation
 
 The fifteen models behind the paper ship in `ckpts/`, so the paper's main result can be
-reproduced without training. The five seeds are aggregated at different stages of the
-evaluation, yielding two distinct figures:
-
-| | averages | reports |
-| --- | --- | --- |
-| `eval` | the five **scores** | the accuracy of the method |
-| `eval --ensemble` | the five **predictions**, then scores once | the accuracy of a prediction from `predict.sh` |
-
-Retraining is needed only to rebuild the checkpoints themselves.
-
-### Per-seed evaluation (Table 1)
-
-Each checkpoint is scored on its own, and the five scores of a split are reported as a mean
-with a standard deviation. The spread is the point: it separates the effect of the method
-from seed variance, which is why the paper reports this.
+reproduced without training:
 
 ```bash
 python -m cheddar eval     # equivalently, just: python -m cheddar
 ```
 
 ```
-split       n  MSE              R2
-ID          5  0.145 +- 0.003    0.621 +- 0.007
-OOD         5  0.236 +- 0.018    0.660 +- 0.026
-Cliff       5  0.142 +- 0.003    0.683 +- 0.006
+split    scoring    nmol seeds  MSE             R2              MAE
+ID       per seed    492     5  0.145 +- 0.003  0.621 +- 0.007  0.261
+         ensemble    492     5  0.138           0.638           0.252
+OOD      per seed    490     5  0.236 +- 0.018  0.660 +- 0.026  0.372
+         ensemble    490     5  0.219           0.685           0.360
+Cliff    per seed    493     5  0.142 +- 0.003  0.683 +- 0.006  0.261
+         ensemble    493     5  0.136           0.697           0.252
 ```
+
+Each split is reported twice, because the five seeds are aggregated at different stages and
+the two figures answer to different uses:
+
+- **`per seed`** scores each checkpoint on its own and reports the mean with a standard
+  deviation. The spread separates the effect of the method from seed variance, which is why
+  the paper reports this row, and these are the figures to compare against other work.
+- **`ensemble`** averages the five predictions into one per peptide and scores that once.
+  Whatever each model gets wrong on its own partly cancels, worth 4–7 % lower error here and
+  costing nothing since all five checkpoints ship. This is what `predict.sh` returns, so the
+  row says how accurate a prediction from it is.
 
 Seeds 1, 2, 7, 13 and 42, taking about three minutes on a CPU, most of it spent reading the
 two caches. The three splits are the random (`ID`), Bemis–Murcko scaffold (`OOD`) and
-activity-cliff (`Cliff`) partitions of Appendix C.
-
-### Ensemble prediction
-
-To predict a peptide in practice, average the five seeds. Whatever each model gets wrong on
-its own partly cancels, which is worth 4–7 % lower error than a single seed and costs
-nothing, since all five checkpoints ship here. `predict.sh` does this already, and
-`--ensemble` scores that same averaged prediction — so these figures say how accurate a
-prediction from `predict.sh` is. Compare against other work with the per-seed figures above,
-not these.
-
-```bash
-python -m cheddar eval --ensemble
-```
-
-```
-split       n  seeds  MSE      R2       MAE
-ID        492      5  0.138    0.638    0.252
-OOD       490      5  0.219    0.685    0.360
-Cliff     493      5  0.136    0.697    0.252
-```
+activity-cliff (`Cliff`) partitions of Appendix C. `nmol` counts the peptides scored and
+`seeds` the checkpoints averaged over.
 
 ### Training
 
