@@ -28,7 +28,7 @@ from .data import MechData, mech_collate
 from .features import read_split
 from .model import MechGraphNet
 
-SPLITS = ("ID", "OD_Murcko", "Cliff_ratio")
+SPLITS = ("ID", "OOD", "Cliff")
 SEEDS = (1, 2, 7, 13, 42)
 
 
@@ -66,14 +66,10 @@ def run_epoch(model, loader, dev, fold2=False):
     return y, p
 
 
-# The three split families, and the file each one lives in.
-SPLIT_FILE = {"ID": "ID", "OD_Murcko": "OD", "Cliff_ratio": "Cliff"}
-
-
 def resolve(cfg, root):
     """Make every path in the config absolute against --data-root, and point
-    split_csv at the file for this run's split."""
-    cfg["split_csv"] = cfg["split_csv"].format(split=SPLIT_FILE[cfg["split"]])
+    split_csv at the file for this run's split, data/<split>_split.csv."""
+    cfg["split_csv"] = cfg["split_csv"].format(split=cfg["split"])
     for k in ("cache", "alt_cache", "label_csv", "split_csv"):
         v = cfg.get(k)
         if v and not os.path.isabs(v):

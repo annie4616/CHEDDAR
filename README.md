@@ -83,31 +83,15 @@ which the model was fitted.
 small `sd` indicates agreement among the five; a large one indicates that the peptide falls
 where they disagree, and the prediction should be weighted accordingly.
 
-Averaging the five is also what makes a prediction here slightly better than the paper's
-headline figure. Table 1 scores each training run separately and reports the mean across
-the five, which is the fair way to describe one run of the method; `predict.sh` instead
-averages the five into a single prediction, and that average is a little more accurate than
-a typical single run:
-
-| split | single run (Table 1) | the five averaged |
-| --- | --- | --- |
-| `ID` | 0.145 ± 0.003 | **0.138** |
-| `OD_Murcko` | 0.236 ± 0.018 | **0.219** |
-| `Cliff_ratio` | 0.142 ± 0.003 | **0.136** |
-
-Test mean squared error on the held-out partition; R² rises correspondingly to 0.638, 0.685
-and 0.697. The gain is 4–7 %, largest on the scaffold split where the seeds disagree most.
-That it is only a few per cent, rather than the fivefold reduction five independent errors
-would give, indicates that the seeds err mostly in the same direction: what remains is error
-of the model and the data, not of the random initialisation. `python -m cheddar.eval
-configs/cheddar.json --all --ensemble` prints both rows of the table above.
+Each prediction is the five averaged into one, which is also how the figures under
+[Reproducing the paper](#reproducing-the-paper) are obtained.
 
 `partition` indicates whether the peptide belonged to the training set of the model used. A
 value of `train` means the figure is in-sample and correspondingly optimistic. The option
-`--split OD_Murcko` selects a model that has not encountered the scaffold:
+`--split OOD` selects a model that has not encountered the scaffold:
 
 ```bash
-./predict.sh 4705 --split OD_Murcko
+./predict.sh 4705 --split OOD
 ```
 
 `./predict.sh` is a thin wrapper over `python -m cheddar predict` and accepts the same
@@ -130,22 +114,35 @@ reading the two caches. It runs without a GPU, though several times more slowly.
 is
 
 ```
-split           n  MSE              R2
-ID              5  0.145 +- 0.003    0.621 +- 0.007
-OD_Murcko       5  0.236 +- 0.018    0.660 +- 0.026
-Cliff_ratio     5  0.142 +- 0.003    0.683 +- 0.006
+split       n  MSE              R2
+ID          5  0.145 +- 0.003    0.621 +- 0.007
+OOD         5  0.236 +- 0.018    0.660 +- 0.026
+Cliff       5  0.142 +- 0.003    0.683 +- 0.006
 ```
 
 corresponding to the CHEDDAR row of Table 1, as the mean and standard deviation over seeds
 1, 2, 7, 13 and 42, followed by the same result stated in prose. The three splits are the
-random (`ID`), Bemis–Murcko scaffold (`OD_Murcko`) and activity-cliff (`Cliff_ratio`)
-partitions described in Appendix C. Each seed is scored on its own here, which is what the
-paper reports; adding `--ensemble` scores the five averaged together instead, as
-[`predict.sh` does](#interpreting-the-output).
+random (`ID`), Bemis–Murcko scaffold (`OOD`) and activity-cliff (`Cliff`)
+partitions described in Appendix C.
 
-Retraining from scratch yields the same table. `python -m cheddar sweep` rebuilds all fifteen
-models from random initialisation and reproduces every row above in both mean and standard
-deviation, each resulting `best.pt` being byte-identical to the checkpoint provided here.
+Adding `--ensemble` averages the five seeds of each split into a single prediction per
+peptide and scores that prediction once, which is what `predict.sh` returns:
+
+```bash
+python -m cheddar eval --ensemble
+```
+
+```
+split       n  seeds  MSE      R2       MAE
+ID        492      5  0.138    0.638    0.252
+OOD       490      5  0.219    0.685    0.360
+Cliff     493      5  0.136    0.697    0.252
+```
+
+Retraining from scratch yields the same figures. `python -m cheddar sweep` rebuilds all
+fifteen models from random initialisation and reproduces the first table above in both mean
+and standard deviation, each resulting `best.pt` being byte-identical to the checkpoint
+provided here.
 Two limitations of this check should be noted: it constitutes a deterministic replay on the
 same GPU architecture and PyTorch build rather than an independent reimplementation, and it
 covers the CHEDDAR row alone, as the seven baselines of Table 1 are not included in this

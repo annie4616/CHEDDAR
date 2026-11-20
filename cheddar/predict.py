@@ -174,7 +174,7 @@ def main():
         inpart = [p for p in res if where(p) == "train"]
         if inpart:
             print("%d of them are in this model's training partition, so those numbers are "
-                  "in-sample; use --split OD_Murcko for a held-out view." % len(inpart))
+                  "in-sample; use --split OOD for a held-out view." % len(inpart))
     if a.out:
         with open(a.out, "w", newline="") as f:
             w = csv.writer(f)

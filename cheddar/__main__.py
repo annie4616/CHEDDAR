@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = str(ROOT / "configs" / "cheddar.json")
-SPLITS = ("ID", "OD_Murcko", "Cliff_ratio")
+SPLITS = ("ID", "OOD", "Cliff")
 SEEDS = (1, 2, 7, 13, 42)
 
 

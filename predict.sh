@@ -6,7 +6,7 @@
 #   ./predict.sh 5222 4705 4271    several at once
 #
 # Anything else is passed straight through, so these also work:
-#   ./predict.sh 4705 --split OD_Murcko      use the scaffold-split model
+#   ./predict.sh 4705 --split OOD           use the scaffold-split model
 #   ./predict.sh --partition test --out p.csv   a whole test partition to a csv
 #
 # The first run builds the two ensemble caches from the MD trajectories and

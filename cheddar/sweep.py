@@ -25,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "configs" / "cheddar.json"
-SPLITS = ("ID", "OD_Murcko", "Cliff_ratio")
+SPLITS = ("ID", "OOD", "Cliff")
 SEEDS = (1, 2, 7, 13, 42)
 CPU_CAP = 0.8                 # never ask for more than this share of the cores
 THREADS_MAX = 4               # per worker; the model is small and GPU-bound
