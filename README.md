@@ -204,12 +204,12 @@ Reading the output:
 
 The fifteen models behind the paper ship in `ckpts/`, so the paper's main result can be
 reproduced without training. Both modes below average over the five seeds, but over
-different things, and the two answer different questions:
+different things, so they report different quantities:
 
-| | averages | answers |
+| | averages | reports |
 | --- | --- | --- |
-| `eval` | the five **scores** | how good is the method? |
-| `eval --ensemble` | the five **predictions**, then scores once | how good is a prediction from `predict.sh`? |
+| `eval` | the five **scores** | the accuracy of the method |
+| `eval --ensemble` | the five **predictions**, then scores once | the accuracy of a prediction from `predict.sh` |
 
 Retraining is needed only to rebuild the checkpoints themselves.
 
