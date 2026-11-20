@@ -203,15 +203,21 @@ Reading the output:
 ## Training and Evaluation
 
 The fifteen models behind the paper ship in `ckpts/`, so the paper's main result can be
-reproduced without training. There are two ways to score them, answering two different
-questions: how good the method is (per seed, which is what the paper reports) and how good a
-single prediction from `predict.sh` is (the seeds averaged). Retraining is needed only to
-rebuild the checkpoints themselves.
+reproduced without training. Both modes below average over the five seeds, but over
+different things, and the two answer different questions:
+
+| | averages | answers |
+| --- | --- | --- |
+| `eval` | the five **scores** | how good is the method? |
+| `eval --ensemble` | the five **predictions**, then scores once | how good is a prediction from `predict.sh`? |
+
+Retraining is needed only to rebuild the checkpoints themselves.
 
 ### Per-seed evaluation (Table 1)
 
-Each of the fifteen checkpoints is scored on its own and the five seeds of a split are
-reported as a mean with a standard deviation. This is what the paper reports.
+Each checkpoint is scored on its own, and the five scores of a split are reported as a mean
+with a standard deviation. The spread is the point: it separates the effect of the method
+from seed variance, which is why the paper reports this.
 
 ```bash
 python -m cheddar eval     # equivalently, just: python -m cheddar
@@ -230,12 +236,12 @@ activity-cliff (`Cliff`) partitions of Appendix C.
 
 ### Ensemble prediction
 
-The five seeds exist to measure the method, but if the aim is one number for one peptide,
-the best estimate is all five averaged — which is what `predict.sh` does. `--ensemble`
-scores exactly that: the seeds are averaged into a single prediction per peptide, and that
-prediction is scored once. Use it to see how accurate a prediction from `predict.sh` is, not
-as a benchmark figure for the method; the figures to compare against other work are the
-per-seed ones above.
+To predict a peptide in practice, average the five seeds. Whatever each model gets wrong on
+its own partly cancels, which is worth 4–7 % lower error than a single seed and costs
+nothing, since all five checkpoints ship here. `predict.sh` does this already, and
+`--ensemble` scores that same averaged prediction — so these figures say how accurate a
+prediction from `predict.sh` is. Compare against other work with the per-seed figures above,
+not these.
 
 ```bash
 python -m cheddar eval --ensemble
