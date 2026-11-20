@@ -8,6 +8,20 @@ edges are selected by how often a pair stays in contact, and the two solvent pre
 averaged. The model has 554,561 parameters, trains in about 31 min on one GPU and predicts
 in 2.3 ms per peptide.
 
+**Start with [Setup](#setup)**, which every other command on this page depends on. Then:
+
+| if you want to | go to | needs |
+| --- | --- | --- |
+| predict permeability for a peptide | [Obtaining a prediction](#obtaining-a-prediction) | CPU, seconds |
+| reproduce the paper's numbers | [Evaluating the model](#evaluating-the-model) | CPU, ~3 min |
+| rebuild the models from scratch | [Training the model](#training-the-model) | **GPU**, 31 min each |
+| change a hyperparameter or run an ablation | [Tuning and ablations](#tuning-and-ablations) | GPU |
+
+Background on the problem and the model is in [Cyclic peptide permeability
+prediction](#cyclic-peptide-permeability-prediction) and
+[Architecture](#architecture); what is in the repository and where the data came
+from are in [Repository contents](#repository-contents) and [Data](#data).
+
 ## Cyclic peptide permeability prediction
 
 A cyclic peptide is a short peptide whose backbone is closed into a ring. The class combines
@@ -40,22 +54,36 @@ concatenates the sum, mean and maximum statistics and leaves their weighting to 
 which is bounded to the normalized label range. The two views are never compared inside the
 model -- each contributes its own loss term -- and are averaged only at inference.
 
-## Obtaining a prediction
+## Setup
 
-Four steps, in the order given. Step 3 downloads 1.6 GB, unpacks it to 10.2 GB and requires
-approximately 12.5 GB of free disk while doing so. It is the only lengthy step, it is
-performed once, and every subsequent command completes in seconds.
+Do this once, before anything else on this page. Predicting, evaluating and training all
+read the same two feature caches, which are built from MD trajectories that a fresh clone
+does not contain, so all three need these steps first.
 
 ```bash
 conda env create -f environment.yml && conda activate cheddar   # 1. install, about 3 min
 python -m cheddar check                                         # 2. report what is present
 python -m cheddar data                                          # 3. obtain the MD data, 1.6 GB
-./predict.sh 5222                                               # 4. predict
 ```
 
-Step 2 reports which files are present and which are missing, and step 3 exits immediately
-if the trajectories are already available, so both may be run without cost when they are not
-required.
+Step 3 is the only lengthy one: it downloads 1.6 GB, unpacks it to 10.2 GB and needs about
+12.5 GB of free disk while doing so. It is performed once. Step 2 reports which files are
+present and which are missing, and step 3 exits immediately if the trajectories are already
+there, so neither costs anything when it is not needed.
+
+The first command that reads the data then builds the two caches from the trajectories,
+about 72 s each, printing what it is doing as it goes. Later commands reuse them and start
+in seconds. Note that skipping step 3 does not fail with a message about missing data: the
+1.6 GB download simply begins by itself, which is worth knowing before a command that looks
+like it has hung.
+
+A GPU is needed only for training. Predicting and evaluating run on a CPU.
+
+## Obtaining a prediction
+
+```bash
+./predict.sh 5222
+```
 
 `5222` is a CycPeptMPDB identifier; any number of identifiers may be given, and
 `./predict.sh` with no arguments runs a worked example. The output has the following
@@ -84,7 +112,7 @@ small `sd` indicates agreement among the five; a large one indicates that the pe
 where they disagree, and the prediction should be weighted accordingly.
 
 Each prediction is the five averaged into one, which is also how the figures under
-[Reproducing the paper](#reproducing-the-paper) are obtained.
+[Evaluating the model](#evaluating-the-model) are obtained.
 
 `partition` indicates whether the peptide belonged to the training set of the model used. A
 value of `train` means the figure is in-sample and correspondingly optimistic. The option
@@ -101,17 +129,18 @@ arguments: `--partition test` for an entire partition, `--all` for every peptide
 Should anything appear incorrect, `python -m cheddar check` reports the installed versions,
 the visible GPU and the data files located, without executing any computation.
 
-## Reproducing the paper
+## Evaluating the model
+
+This reproduces the paper's main result. It scores the fifteen checkpoints in `ckpts/`, so
+no training is required.
 
 ```bash
-python -m cheddar          # equivalently, python -m cheddar eval
+python -m cheddar eval     # equivalently, just: python -m cheddar
 ```
 
-This scores the fifteen provided checkpoints and prints the paper's main row; `eval` is the
-default command, so it may be omitted. No arguments or paths are required. Scoring all
-fifteen checkpoints takes approximately three minutes, the greater part of which is spent
-reading the two caches. It runs without a GPU, though several times more slowly. The output
-is
+`eval` is the default command, so it may be omitted. No arguments or paths are required.
+Scoring all fifteen takes about three minutes, most of it spent reading the two caches, and
+runs on a CPU. The output is
 
 ```
 split       n  MSE              R2
@@ -151,8 +180,38 @@ repository.
 ## Training the model
 
 Training is not required in order to use CHEDDAR: the fifteen models behind the paper are
-provided in `ckpts/`, and `predict.sh` uses them directly. This section documents how those
-fifteen are rebuilt, for readers who wish to verify them.
+already in `ckpts/`, and both `predict.sh` and `eval` use them directly. This section is for
+rebuilding them. **A GPU is needed here**, unlike everywhere else on this page.
+
+One model, about 31 minutes on one GPU:
+
+```bash
+python -m cheddar train --split ID --seed 1
+```
+
+All fifteen, which is how the paper's table was produced:
+
+```bash
+python -m cheddar sweep
+```
+
+`--split` is one of `ID`, `OOD` or `Cliff` and `--seed` one of 1, 2, 7, 13 and 42; the
+fifteen models are every combination. A single run writes `test_metrics.json`,
+`history.json`, `predictions.csv` and `best.pt` to `runs/cheddar-<split>-s<seed>/`, and
+`sweep` simply runs all fifteen of them.
+
+`sweep` uses only GPUs that are not in use by others, limits itself to 80 % of the available
+cores, and skips runs for which results already exist, so an interrupted sweep resumes where
+it stopped. Deterministic kernels are enabled, so a given seed on the same GPU architecture
+and PyTorch build reproduces its result exactly, including a byte-identical `best.pt`.
+
+On eight RTX 3090s, `sweep` assigns one card per run, so the fifteen proceed in two waves
+and finish in 69 min. Placing all fifteen on the eight cards at once, two per card, took
+51 min: 20–26 s per epoch, plus about 8 min at the outset while fifteen processes read the
+same two 1 GB caches from one disk. A run peaks at 0.72 GB of GPU memory, so sharing a card
+costs speed alone.
+
+### How training works
 
 **Objective.** The model is fitted by stochastic gradient descent on the measured
 permeabilities of the training peptides, minimising mean squared error on the scaled label.
@@ -169,31 +228,6 @@ selection. The test figures are what Table 1 reports.
 **Replication.** Initialisation and batch order depend on the random seed, so each
 configuration is run with five seeds (1, 2, 7, 13, 42) and reported as a mean with its
 standard deviation, which separates the effect of the method from seed variance.
-
-One model, about 31 minutes on one GPU:
-
-```bash
-python -m cheddar train --split ID --seed 1
-```
-
-All fifteen, which is how the paper's table was produced:
-
-```bash
-python -m cheddar sweep
-```
-
-`sweep` uses only GPUs that are not in use by others, limits itself to 80 % of the available
-cores, and skips runs for which results already exist, so an interrupted sweep resumes where
-it stopped. Results are written to `runs/cheddar-<split>-s<seed>/` as `test_metrics.json`,
-`history.json`, `predictions.csv` and `best.pt`. Deterministic kernels are enabled, so a
-given seed on the same GPU architecture and PyTorch build reproduces its result exactly,
-including a byte-identical `best.pt`.
-
-`sweep` assigns one card per run, so on eight RTX 3090s the fifteen runs proceed in two
-waves and complete in 69 min. Placing all fifteen on the eight cards concurrently, two per
-card, required 51 min: 20–26 s per epoch, together with approximately 8 min at the outset
-while fifteen processes read the same two 1 GB caches from a single disk. A run peaks at
-0.72 GB of GPU memory, so sharing a card affects speed alone.
 
 ## Tuning and ablations
 

@@ -61,11 +61,17 @@ def check():
     print()
     cfg = json.load(open(CONFIG))
     for label, rel in (("label table", cfg["label_csv"]), ("atom annotation", "data/atom_annot.pkl"),
-                       ("SMILES fix", "data/nal_fix.json"), ("splits", "data/ID_split.csv"),
+                       ("SMILES fix", "data/nal_fix.json"),
                        ("water cache", cfg["cache"]), ("hexane cache", cfg["alt_cache"])):
         p = ROOT / rel
         print("  %-16s %s %s" % (label, "found  " if p.exists() else "MISSING",
                                  rel if not p.exists() else "%s (%.0f MB)" % (rel, p.stat().st_size / 2**20)))
+    # All three split files are needed, so report any one of them that is absent
+    # rather than checking only the first.
+    gone = [s for s in SPLITS if not (ROOT / ("data/%s_split.csv" % s)).exists()]
+    print("  %-16s %s %s" % ("splits", "MISSING" if gone else "found  ",
+                             ", ".join("data/%s_split.csv" % s for s in gone) if gone
+                             else "%d of %d in data/" % (len(SPLITS), len(SPLITS))))
     n = len(list((ROOT / "ckpts").glob("cheddar-*.pt"))) if (ROOT / "ckpts").is_dir() else 0
     print("  %-16s %s %d of 15" % ("checkpoints", "found  " if n == 15 else "PARTIAL", n))
     from . import fetch
