@@ -203,8 +203,8 @@ Reading the output:
 ## Training and Evaluation
 
 The fifteen models behind the paper ship in `ckpts/`, so the paper's main result can be
-reproduced without training. Both modes below average over the five seeds, but over
-different things, so they report different quantities:
+reproduced without training. The five seeds are aggregated at different stages of the
+evaluation, yielding two distinct figures:
 
 | | averages | reports |
 | --- | --- | --- |
