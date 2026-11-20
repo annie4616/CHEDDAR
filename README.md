@@ -188,7 +188,8 @@ Reading the output:
   against the 4,925 measured peptides, that being the only scale the model was fitted on.
 - `sd` is the spread across the five models. A small value means they agree; a large one
   means the peptide falls where they disagree, and the prediction should be weighted
-  accordingly.
+  accordingly. For how accurate these averaged predictions are in general, see
+  [Ensemble prediction](#ensemble-prediction).
 - `partition` says whether the peptide was in the training set of the model used. `train`
   means the figure is in-sample, so optimistic. `--split OOD` selects a model that has not
   encountered the scaffold:
@@ -202,8 +203,10 @@ Reading the output:
 ## Training and Evaluation
 
 The fifteen models behind the paper ship in `ckpts/`, so the paper's main result can be
-reproduced without training. Scoring them two ways answers two different questions, and
-retraining is only needed to rebuild the checkpoints themselves.
+reproduced without training. There are two ways to score them, answering two different
+questions: how good the method is (per seed, which is what the paper reports) and how good a
+single prediction from `predict.sh` is (the seeds averaged). Retraining is needed only to
+rebuild the checkpoints themselves.
 
 ### Per-seed evaluation (Table 1)
 
@@ -225,11 +228,14 @@ Seeds 1, 2, 7, 13 and 42, taking about three minutes on a CPU, most of it spent 
 two caches. The three splits are the random (`ID`), Bemis–Murcko scaffold (`OOD`) and
 activity-cliff (`Cliff`) partitions of Appendix C.
 
-### Ensemble evaluation
+### Ensemble prediction
 
-`--ensemble` first averages the five seeds of a split into a single prediction per peptide,
-then scores that prediction once. This is what `predict.sh` returns, so it is the accuracy of
-the released five-checkpoint model rather than of one training run.
+The five seeds exist to measure the method, but if the aim is one number for one peptide,
+the best estimate is all five averaged — which is what `predict.sh` does. `--ensemble`
+scores exactly that: the seeds are averaged into a single prediction per peptide, and that
+prediction is scored once. Use it to see how accurate a prediction from `predict.sh` is, not
+as a benchmark figure for the method; the figures to compare against other work are the
+per-seed ones above.
 
 ```bash
 python -m cheddar eval --ensemble
