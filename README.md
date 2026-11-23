@@ -383,7 +383,7 @@ table is one sweep.
 | water only | `python -m cheddar sweep --config configs/abl_water_only.json` |
 | hexane only | `python -m cheddar sweep --config configs/abl_hexane_only.json` |
 | w/o 3D-contact edges | `python -m cheddar sweep --config configs/abl_no_contact_edges.json` |
-| w/o ensemble geometry | `python -m cheddar sweep --config configs/abl_no_ensemble_masked.json` |
+| w/o ensemble geometry | `python -m cheddar sweep --config configs/abl_no_ensemble_geometry.json` |
 
 Runs are named after the configuration, for example `runs/abl_water_only-ID-s1/`. A single
 arm of one split, rather than the whole sweep:
@@ -405,15 +405,25 @@ Configuration keys:
 | `edge_block` | `both`, or `bond` to drop the 3D contact relation | both |
 | `both_solvents`, `solvent_token` | use two solvent views, append iota_s | true, true |
 | `meanonly` | remove the dispersion columns outright, which changes the feature width and the parameter count | absent |
+| `drop_space_cols` | remove named columns of the 3D contact relation outright, on top of `meanonly`; an unknown name raises rather than being ignored | absent |
 | `mask_node_cols`, `mask_space_cols` | withhold named columns by setting them to 0.0 after standardization, leaving the feature width and the parameter count unchanged | absent |
 | `cache`, `alt_cache` | the two solvent caches; a name containing `meanedge` is built with the mean-distance rule of Eq. (6) instead of occupancy | ensemble_{Water,Hexane} |
 
-> The "w/o ensemble geometry" row was produced by masking: the seven dispersion columns on
-> the node and six on the 3D contact relation are set to 0.0 after standardization, so the
-> model keeps its 554,561 parameters and only the information is withheld.
-> `abl_no_ensemble_geometry.json` instead removes those columns and reads a
-> mean-distance-selected cache, which changes the feature width and does **not** reproduce
-> the published figure.
+> The "w/o ensemble geometry" row takes the ensemble out of the input in all three places it
+> enters, which is why `abl_no_ensemble_geometry.json` changes four keys rather than one.
+> `meanonly` removes the seven node dispersion columns and `d_sd`, `d_min`, `d_max`;
+> `drop_space_cols` removes the three occupancy columns `p_contact`, `p_35`, `p_45`; and the
+> `meanedge` cache decides contact membership by mean distance (Eq. 6) rather than by
+> occupancy, so dispersion is gone from the edge set itself. `trans_drop` is 0.0 because
+> Eq. (7) drops transient contacts by occupancy, and this arm has no occupancy to drop.
+> Node width falls from 59 to 52 and the 3D contact relation from 40 to 34, so unlike the
+> masked arms the parameter count changes.
+>
+> `abl_no_ensemble_masked.json` withholds the same information by masking instead: thirteen
+> columns are standardized as usual and then set to 0.0, so the model keeps its 554,561
+> parameters. It is the better-controlled comparison, because width and capacity are held
+> fixed, but it is **not** the arm the published row reports, and it gives a lower OOD MSE
+> (0.260 against 0.281).
 
 * * *
 

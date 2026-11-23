@@ -3,10 +3,11 @@
  "alt_cache": "cache/meanedge_Hexane_c100.pkl",
  "label_csv": "data/CycPeptMPDB-4D_new_imhb.csv",
  "both_solvents": true, "meanonly": true,
+ "drop_space_cols": ["p_contact", "p_35", "p_45"],
  "solvent_token": true,
  "edge_block": "both",
  "hidden": 128, "head_hidden": 128, "layers": 3,
- "dropout": 0.5, "trans_drop": 0.2, "weight_decay": 0.1,
+ "dropout": 0.5, "trans_drop": 0.0, "weight_decay": 0.1,
  "lr": 0.0006, "batch_size": 16, "epochs": 120, "warmup_frac": 0.2,
  "split_csv": "data/{split}_split.csv"
 }
