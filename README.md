@@ -42,7 +42,7 @@ model -- each contributes its own loss term -- and are averaged only at inferenc
 
 ## Table of Contents
 
-1. [Environment Setup](#environment-setup)
+1. [Setup](#setup)
 2. [Datasets](#datasets)
 3. [Inference](#inference)
 4. [Training and Evaluation](#training-and-evaluation)
@@ -52,7 +52,7 @@ model -- each contributes its own loss term -- and are averaged only at inferenc
 
 * * *
 
-## Environment Setup
+## Setup
 
 1. Install Miniconda or Anaconda. A GPU is needed only for training; prediction and
    evaluation run on a CPU.
