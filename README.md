@@ -406,7 +406,6 @@ Configuration keys:
 | `both_solvents`, `solvent_token` | use two solvent views, append iota_s | true, true |
 | `meanonly` | remove the dispersion columns outright, which changes the feature width and the parameter count | absent |
 | `drop_space_cols` | remove named columns of the 3D contact relation outright, on top of `meanonly`; an unknown name raises rather than being ignored | absent |
-| `mask_node_cols`, `mask_space_cols` | withhold named columns by setting them to 0.0 after standardization, leaving the feature width and the parameter count unchanged | absent |
 | `cache`, `alt_cache` | the two solvent caches; a name containing `meanedge` is built with the mean-distance rule of Eq. (6) instead of occupancy | ensemble_{Water,Hexane} |
 
 > The "w/o ensemble geometry" row takes the ensemble out of the input in all three places it
@@ -416,14 +415,8 @@ Configuration keys:
 > `meanedge` cache decides contact membership by mean distance (Eq. 6) rather than by
 > occupancy, so dispersion is gone from the edge set itself. `trans_drop` is 0.0 because
 > Eq. (7) drops transient contacts by occupancy, and this arm has no occupancy to drop.
-> Node width falls from 59 to 52 and the 3D contact relation from 40 to 34, so unlike the
-> masked arms the parameter count changes.
->
-> `abl_no_ensemble_masked.json` withholds the same information by masking instead: thirteen
-> columns are standardized as usual and then set to 0.0, so the model keeps its 554,561
-> parameters. It is the better-controlled comparison, because width and capacity are held
-> fixed, but it is **not** the arm the published row reports, and it gives a lower OOD MSE
-> (0.260 against 0.281).
+> Node width falls from 59 to 52 and the 3D contact relation from 40 to 34, so this arm's
+> parameter count differs from the reference.
 
 * * *
 
